@@ -21,11 +21,12 @@ import EnemyRat from './EnemyRat';
 import NpcMapSprite from './NpcMapSprite';
 import PlayerMapSprite from './PlayerMapSprite';
 import type { SpriteDirection, PlayerCharacterId } from '../constants/characterAssets';
-import { resolveNpcFacing } from '../constants/characterAssets';
+import { resolveNpcFacing, formatPlayerNameTag, getPlayerCharacter, truncatePlayerName } from '../constants/characterAssets';
 
 interface GameMapProps {
   playerPos: { x: number; y: number };
   characterId: PlayerCharacterId | string;
+  playerName: string;
   playerDirection: SpriteDirection;
   seekingNpc: TargetNPC | null;
   completedQuestIds: ReadonlySet<number>;
@@ -55,6 +56,7 @@ function TreasureMarker({ variant }: { variant: 'chest' | 'sparkle' }) {
 export default function GameMap({
   playerPos,
   characterId,
+  playerName,
   playerDirection,
   seekingNpc,
   completedQuestIds,
@@ -79,6 +81,16 @@ export default function GameMap({
   const camera = useMemo(
     () => computeCameraOffset(playerPos, viewportSize.width, viewportSize.height),
     [playerPos, viewportSize.width, viewportSize.height],
+  );
+
+  const playerNameTag = useMemo(
+    () => formatPlayerNameTag(playerName, characterId),
+    [playerName, characterId],
+  );
+
+  const playerNameTagFull = useMemo(
+    () => `${truncatePlayerName(playerName)}・${getPlayerCharacter(characterId).name}`,
+    [playerName, characterId],
   );
 
   const visibleRange = useMemo(() => {
@@ -296,15 +308,23 @@ export default function GameMap({
                 {isPlayer && (
                   <motion.div
                     layout
-                    className="z-20 relative w-10 h-12 mb-0.5 drop-shadow-xl"
+                    className="relative flex flex-col items-center w-full justify-end pb-0.5 z-20"
                     transition={{ type: 'spring', stiffness: 400, damping: 30 }}
                   >
                     <EntityGroundShadow wide />
-                    <PlayerMapSprite
-                      characterId={characterId}
-                      direction={playerDirection}
-                      className="w-full h-full"
-                    />
+                    <div className="relative w-10 h-12 drop-shadow-xl">
+                      <PlayerMapSprite
+                        characterId={characterId}
+                        direction={playerDirection}
+                        className="w-full h-full"
+                      />
+                    </div>
+                    <span
+                      className="text-[9px] font-bold text-white bg-slate-800/80 px-1.5 py-0.5 rounded mt-0.5 shadow-md whitespace-nowrap max-w-[88px] truncate leading-tight"
+                      title={playerNameTagFull}
+                    >
+                      {playerNameTag}
+                    </span>
                   </motion.div>
                 )}
 

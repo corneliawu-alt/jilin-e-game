@@ -36,7 +36,8 @@ function canPlaceDecoration(x: number, y: number, kind: MapDecoration['kind']): 
       id === TileId.Path ||
       id === TileId.Sidewalk ||
       id === TileId.Plaza ||
-      id === TileId.FlowerBed
+      id === TileId.FlowerBed ||
+      id === TileId.Farmland
     );
   }
   return false;

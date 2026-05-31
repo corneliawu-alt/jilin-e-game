@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { User, School, Hash, ArrowRight, Sparkles, ChevronLeft } from 'lucide-react';
 import { UserInfo } from '../App';
 import { GAME_TITLE, PLAYER_ROLE } from '../constants/gameData';
+import { useBgm } from '../contexts/BgmContext';
 import {
   PLAYER_CHARACTERS,
   getPlayerImageFallback,
@@ -56,6 +57,7 @@ function GameLogo() {
 }
 
 export default function Login({ onStartGame }: LoginProps) {
+  const { unlock } = useBgm();
   const [step, setStep] = useState<OnboardingStep>('info');
   const [classId, setClassId] = useState('');
   const [seatNumber, setSeatNumber] = useState('');
@@ -72,6 +74,7 @@ export default function Login({ onStartGame }: LoginProps) {
 
   const handleStartGame = () => {
     if (!selectedCharacter || !canProceedInfo) return;
+    unlock();
     onStartGame(
       { classId: classId.trim(), seatNumber: seatNumber.trim(), name: name.trim() },
       selectedCharacter,

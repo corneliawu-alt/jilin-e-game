@@ -44,8 +44,12 @@ import {
   RADAR_SCORE_COST,
   RADAR_PING_DURATION_MS,
 } from '../constants/treasureRadar';
+import {
+  generateLearningRatTaunt,
+  REQUIRED_LEARNING_NPCS,
+} from '../constants/ratTaunt';
 
-const REQUIRED_NPCS: TargetNPC[] = ['Chef', 'Doctor', 'Captain'];
+const REQUIRED_NPCS: TargetNPC[] = REQUIRED_LEARNING_NPCS;
 
 const CERTIFICATION_MESSAGE =
   '知識裝備完成！變異老鼠出現了，快去消滅牠們！';
@@ -61,10 +65,11 @@ export interface GameResultStats {
 
 interface GameProps {
   characterId: string;
+  playerName: string;
   onComplete: (stats: GameResultStats) => void;
 }
 
-export default function Game({ characterId, onComplete }: GameProps) {
+export default function Game({ characterId, playerName, onComplete }: GameProps) {
   const [playerPos, setPlayerPos] = useState(PLAYER_START);
   const [completedQuestIds, setCompletedQuestIds] = useState<Set<number>>(() => new Set());
   const [activeQuestionId, setActiveQuestionId] = useState<number | null>(null);
@@ -87,6 +92,7 @@ export default function Game({ characterId, onComplete }: GameProps) {
   const [activeTreasure, setActiveTreasure] = useState<TreasureSpot | null>(null);
   const [showTreasureDialog, setShowTreasureDialog] = useState(false);
   const [showRatTauntDialog, setShowRatTauntDialog] = useState(false);
+  const [ratTauntMessage, setRatTauntMessage] = useState('');
   const [bossGateMode, setBossGateMode] = useState<'blocked' | 'ready' | null>(null);
   const [bossBlockedMessage, setBossBlockedMessage] = useState('');
   const [lastRadarUsedAt, setLastRadarUsedAt] = useState<number | null>(null);
@@ -98,7 +104,7 @@ export default function Game({ characterId, onComplete }: GameProps) {
   const [startTime] = useState(() => Date.now());
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const prevPlayerPosRef = useRef(PLAYER_START);
-  const [playerDirection, setPlayerDirection] = useState<SpriteDirection>('down');
+  const [playerDirection, setPlayerDirection] = useState<SpriteDirection>('up');
 
   const doll = DOLLS.find((d) => d.id === characterId)!;
   const activeQuestion = activeQuestionId ? getQuestionById(activeQuestionId) : undefined;
@@ -193,6 +199,7 @@ export default function Game({ characterId, onComplete }: GameProps) {
     if (!onRatCell) return;
 
     if (gamePhase === 'learning' || talkedToNPCs.size < REQUIRED_NPCS.length) {
+      setRatTauntMessage(generateLearningRatTaunt(talkedToNPCs));
       setShowRatTauntDialog(true);
       return;
     }
@@ -502,6 +509,7 @@ export default function Game({ characterId, onComplete }: GameProps) {
         <GameMap
           playerPos={playerPos}
           characterId={characterId as PlayerCharacterId}
+          playerName={playerName}
           playerDirection={playerDirection}
           seekingNpc={seekingNpc}
           completedQuestIds={completedQuestIds}
@@ -587,7 +595,11 @@ export default function Game({ characterId, onComplete }: GameProps) {
 
       <AnimatePresence>
         {showRatTauntDialog && (
-          <RatTauntDialog key="rat-taunt" onClose={() => setShowRatTauntDialog(false)} />
+          <RatTauntDialog
+            key="rat-taunt"
+            message={ratTauntMessage}
+            onClose={() => setShowRatTauntDialog(false)}
+          />
         )}
       </AnimatePresence>
 

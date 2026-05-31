@@ -99,6 +99,7 @@ export const SPRITE_IMG_CLASS =
 export const PLAYER_CHARACTERS: {
   id: PlayerCharacterId;
   name: string;
+  shortTitle: string;
   portrait: string;
   color: string;
   accentClass: string;
@@ -106,7 +107,8 @@ export const PLAYER_CHARACTERS: {
 }[] = [
   {
     id: 'actor1',
-    name: '稽查員 A',
+    name: '環境稽查員',
+    shortTitle: '環境稽查',
     portrait: char(ACTOR_FILES.player1.portrait),
     color: '#3b82f6',
     accentClass: 'from-sky-100 to-blue-200',
@@ -114,7 +116,8 @@ export const PLAYER_CHARACTERS: {
   },
   {
     id: 'actor2',
-    name: '稽查員 B',
+    name: '防疫稽查員',
+    shortTitle: '防疫稽查',
     portrait: char(ACTOR_FILES.player2.portrait),
     color: '#f59e0b',
     accentClass: 'from-amber-100 to-orange-200',
@@ -129,6 +132,25 @@ export function resolvePlayerActorKey(characterId: PlayerCharacterId | string): 
 
 export function getPlayerCharacter(characterId: PlayerCharacterId | string) {
   return PLAYER_CHARACTERS.find((c) => c.id === characterId) ?? PLAYER_CHARACTERS[0];
+}
+
+/** 地圖姓名標籤：超過 4 字截斷並加省略號 */
+export function truncatePlayerName(name: string, maxLength = 4): string {
+  const trimmed = name.trim();
+  if (trimmed.length <= maxLength) return trimmed;
+  return `${trimmed.slice(0, maxLength)}...`;
+}
+
+export function getPlayerCharacterShortTitle(characterId: PlayerCharacterId | string): string {
+  return getPlayerCharacter(characterId).shortTitle;
+}
+
+/** 地圖姓名標籤格式：{簡化姓名}・{角色簡稱} */
+export function formatPlayerNameTag(
+  playerName: string,
+  characterId: PlayerCharacterId | string,
+): string {
+  return `${truncatePlayerName(playerName)}・${getPlayerCharacterShortTitle(characterId)}`;
 }
 
 /** 對話框用大圖（Actor1_1 / Actor1_2） */

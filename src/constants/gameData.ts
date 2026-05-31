@@ -16,7 +16,6 @@ import {
   GRID_WIDTH,
   GRID_HEIGHT,
   TILE_SIZE,
-  PLAYER_START,
   NPC_GRID_POSITIONS,
   MAP_PIXEL_WIDTH,
   MAP_PIXEL_HEIGHT,
@@ -28,6 +27,7 @@ import {
   isBuildingTile,
   isBlockedTile,
   isWalkableGround,
+  isBorderBarrierTile,
   getTileClassName,
   getTileId,
   TileId,
@@ -48,13 +48,18 @@ import {
   touchesRoad,
   isMapEdgeForestCell,
   getRoundaboutRing,
+  getPlayerSpawnPoint,
+  getMainGatePosition,
+  MAIN_GATE_ROAD_X,
 } from './tilemap';
+
+/** 主城門正上方、門內幹道起點（由地圖演算法決定） */
+export const PLAYER_START = getPlayerSpawnPoint();
 
 export {
   GRID_WIDTH,
   GRID_HEIGHT,
   TILE_SIZE,
-  PLAYER_START,
   NPC_GRID_POSITIONS,
   MAP_PIXEL_WIDTH,
   MAP_PIXEL_HEIGHT,
@@ -63,6 +68,7 @@ export {
   isBuildingTile,
   isBlockedTile,
   isWalkableGround,
+  isBorderBarrierTile,
   getTileClassName,
   getTileId,
   TileId,
@@ -80,6 +86,9 @@ export {
   touchesRoad,
   isMapEdgeForestCell,
   getRoundaboutRing,
+  getPlayerSpawnPoint,
+  getMainGatePosition,
+  MAIN_GATE_ROAD_X,
 };
 
 export type {
@@ -163,9 +172,10 @@ export function isNpcCell(x: number, y: number): boolean {
   return Object.values(NPC_GRID_POSITIONS).some((p) => p.x === x && p.y === y);
 }
 
-/** 碰撞檢測：NPC、樹木、建築物皆不可進入 */
+/** 碰撞檢測：NPC、樹木、建築物、邊界屏障皆不可進入 */
 export function isBlockedCell(x: number, y: number): boolean {
-  return isNpcCell(x, y) || isBlockedTile(x, y);
+  if (!isInBounds(x, y)) return true;
+  return isNpcCell(x, y) || isBlockedTile(x, y) || isBorderBarrierTile(x, y);
 }
 
 /** @deprecated 使用 isTreeTile；保留相容 */

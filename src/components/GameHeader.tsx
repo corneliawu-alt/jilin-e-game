@@ -5,6 +5,7 @@ import QuestProgressBar from './QuestProgressBar';
 import NpcZonePanel from './NpcZonePanel';
 import ItemBackpack from './ItemBackpack';
 import TreasureRadarButton from './TreasureRadarButton';
+import BgmToggleButton from './BgmToggleButton';
 import { NPCS, type TargetNPC } from '../constants/gameData';
 import type { PlayerInventory } from '../constants/items';
 
@@ -124,6 +125,7 @@ export default function GameHeader({
 
           <div className="flex flex-col items-end gap-1 shrink-0">
             <div className="flex items-center gap-1">
+              <BgmToggleButton />
               <StatChip
                 icon={<MapPin size={11} />}
                 title="座標"

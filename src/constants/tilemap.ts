@@ -1,7 +1,6 @@
 import {
   GRID_WIDTH,
   GRID_HEIGHT,
-  PLAYER_START,
   NPC_GRID_POSITIONS,
 } from './mapConfig';
 
@@ -23,6 +22,20 @@ export enum TileId {
   RoadDashV = 14,
   Plaza = 15,
   Fountain = 16,
+  /** 城鎮邊界石牆（非建築牆） */
+  TownWall = 17,
+  /** 城牆上的封閉城門（幹道邊界） */
+  TownGate = 18,
+  /** 護城河／水域屏障 */
+  Moat = 19,
+  /** 道路遇護城河時，城門外側的木橋（視覺通道，仍不可通行） */
+  Pier = 20,
+  /** 城門外側護城河上的木橋 */
+  Bridge = 21,
+  /** 南側主城門（唯一進城起點地標） */
+  MainGate = 22,
+  /** 農田／菜園 */
+  Farmland = 23,
 }
 
 export type BuildingPart = 'roof' | 'wall' | 'window' | 'door';
@@ -34,11 +47,13 @@ export type ShopThemeId =
   | 'home'
   | 'house_red'
   | 'house_blue'
+  | 'house_gray'
   | 'bakery'
   | 'cafe'
   | 'grocery'
   | 'flower'
   | 'bookstore'
+  | 'magic_library'
   | 'diner'
   | 'restaurant'
   | 'clinic'
@@ -61,7 +76,13 @@ export type BuildingCellMeta = {
 /** 地圖外圍森林帶（generateMap 時填入） */
 let MAP_EDGE_FOREST = new Set<string>();
 
-const MAP_EDGE_DEPTH = 2;
+const MAP_EDGE_WALL_DEPTH = 1;
+/** 護城河環帶（緊鄰城牆內側） */
+const MAP_MOAT_DEPTH = 1;
+/** 城牆+護城河以外的森林過渡深度 */
+const MAP_FOREST_FRINGE_DEPTH = 4;
+/** 城鎮南側進城通道保留深度 */
+const TOWN_ENTRANCE_DEPTH = 3;
 
 export const SHOP_THEMES: Record<
   ShopThemeId,
@@ -98,6 +119,14 @@ export const SHOP_THEMES: Record<
     label: '民宅',
     isShop: false,
   },
+  house_gray: {
+    roofGradient: 'bg-gradient-to-br from-slate-400 to-slate-700',
+    wallClass: 'bg-stone-200',
+    awningClass: '',
+    emoji: '🏠',
+    label: '民宅',
+    isShop: false,
+  },
   bakery: {
     roofGradient: 'bg-gradient-to-br from-orange-400 to-orange-700',
     wallClass: 'bg-orange-100',
@@ -123,8 +152,8 @@ export const SHOP_THEMES: Record<
     isShop: true,
   },
   flower: {
-    roofGradient: 'bg-gradient-to-br from-pink-400 to-emerald-600',
-    wallClass: 'bg-pink-50',
+    roofGradient: 'bg-gradient-to-br from-green-400 to-emerald-700',
+    wallClass: 'bg-emerald-50',
     awningClass: 'awning-strip-flower',
     emoji: '🌸',
     label: '花店',
@@ -136,6 +165,14 @@ export const SHOP_THEMES: Record<
     awningClass: 'awning-strip-bookstore',
     emoji: '📚',
     label: '書店',
+    isShop: true,
+  },
+  magic_library: {
+    roofGradient: 'bg-gradient-to-br from-violet-500 to-purple-900',
+    wallClass: 'bg-purple-50',
+    awningClass: 'awning-strip-bookstore',
+    emoji: '🔮',
+    label: '魔法圖書館',
     isShop: true,
   },
   diner: {
@@ -173,9 +210,9 @@ export const SHOP_THEMES: Record<
 };
 
 const COMMERCIAL_POOL: ShopThemeId[] = [
-  'bakery', 'cafe', 'grocery', 'flower', 'bookstore', 'diner', 'restaurant',
+  'bakery', 'cafe', 'grocery', 'flower', 'bookstore', 'magic_library', 'diner', 'restaurant',
 ];
-const HOUSE_POOL: ShopThemeId[] = ['house_red', 'house_blue', 'home', 'home'];
+const HOUSE_POOL: ShopThemeId[] = ['house_red', 'house_blue', 'house_gray', 'home', 'home', 'house_gray'];
 
 export const TILE_CLASSES: Record<TileId, string> = {
   [TileId.Grass]: 'tile-grass',
@@ -195,20 +232,57 @@ export const TILE_CLASSES: Record<TileId, string> = {
   [TileId.Pond]: 'tile-pond',
   [TileId.FlowerBed]: 'tile-flower-bed',
   [TileId.Path]: 'tile-dirt',
+  [TileId.TownWall]: 'tile-town-wall',
+  [TileId.TownGate]: 'tile-town-gate',
+  [TileId.Moat]: 'tile-moat',
+  [TileId.Pier]: 'tile-pier',
+  [TileId.Bridge]: 'tile-bridge',
+  [TileId.MainGate]: 'tile-main-gate',
+  [TileId.Farmland]: 'tile-farmland',
 };
+
+const BORDER_BARRIER_TILES = new Set<TileId>([
+  TileId.TownWall,
+  TileId.TownGate,
+  TileId.Moat,
+  TileId.Bridge,
+  TileId.Pier,
+  TileId.MainGate,
+]);
 
 const STRUCTURE_TILES = new Set<TileId>([
   TileId.RoofHome, TileId.RoofShop, TileId.Wall, TileId.Window, TileId.Door,
 ]);
-const BLOCKING_TILES = new Set<TileId>([TileId.Tree, TileId.Fountain, ...STRUCTURE_TILES]);
+const BLOCKING_TILES = new Set<TileId>([
+  TileId.Tree,
+  TileId.Fountain,
+  ...STRUCTURE_TILES,
+  ...BORDER_BARRIER_TILES,
+]);
 const BUILDING_TILES = STRUCTURE_TILES;
 const WALKABLE_TILES = new Set<TileId>([
   TileId.Grass, TileId.GrassDark, TileId.Sidewalk, TileId.Road, TileId.RoadDashH,
-  TileId.RoadDashV, TileId.FlowerBed, TileId.Path, TileId.Plaza,
+  TileId.RoadDashV, TileId.FlowerBed, TileId.Path, TileId.Plaza, TileId.Farmland,
 ]);
 
 const MAIN_ROAD_H = [8, 15, 22];
 const MAIN_ROAD_V = [10, 20, 30];
+
+/** 南側主城門所在縱向幹道（地圖正下方進城主路） */
+export const MAIN_GATE_ROAD_X = MAIN_ROAD_V[0];
+
+export function getMainGateWallY(): number {
+  return GRID_HEIGHT - 2;
+}
+
+export function getMainGatePosition(): { x: number; y: number } {
+  return { x: MAIN_GATE_ROAD_X, y: getMainGateWallY() };
+}
+
+/** 主城門正上方、門內幹道起點 */
+export function getPlayerSpawnPoint(): { x: number; y: number } {
+  return { x: MAIN_GATE_ROAD_X, y: getMainGateWallY() - 1 };
+}
 
 /** 老鼠可生成的地面：草地、石磚人行道／廣場／巷弄 */
 const RAT_GROUND_TILES = new Set<TileId>([
@@ -217,6 +291,7 @@ const RAT_GROUND_TILES = new Set<TileId>([
   TileId.Sidewalk,
   TileId.Path,
   TileId.Plaza,
+  TileId.Farmland,
 ]);
 
 /** 公園樹叢區（有機聚集，非網格果園） */
@@ -511,38 +586,35 @@ function classifyBuildingCell(
   h: number,
   doorFacing: BuildingFacing,
   doorCol: number,
-  doorRow: number,
+  doorRowLocal: number,
   shop: boolean,
 ): CellBlueprint {
-  const roofRow = doorFacing === 'north' ? h - 1 : 0;
-  const groundRow = doorFacing === 'north' ? 0 : h - 1;
+  const roofTile = shop ? TileId.RoofShop : TileId.RoofHome;
 
   if (doorFacing === 'south' || doorFacing === 'north') {
-    if (dy === roofRow) {
-      return {
-        tile: shop ? TileId.RoofShop : TileId.RoofHome,
-        part: 'roof',
-      };
+    const groundRow = doorFacing === 'south' ? h - 1 : 0;
+
+    if (dy !== groundRow) {
+      if (h >= 3 && dy === (doorFacing === 'south' ? h - 2 : 1)) {
+        if (dx === 0 || dx === w - 1) return { tile: TileId.Window, part: 'window' };
+        return { tile: TileId.Wall, part: 'wall' };
+      }
+      return { tile: roofTile, part: 'roof' };
     }
-    if (dy === groundRow) {
-      if (dx === doorCol) return { tile: TileId.Door, part: 'door' };
-      return { tile: TileId.Window, part: 'window' };
-    }
+
+    if (dx === doorCol) return { tile: TileId.Door, part: 'door' };
     if (dx === 0 || dx === w - 1) return { tile: TileId.Window, part: 'window' };
     return { tile: TileId.Wall, part: 'wall' };
   }
 
   const faceCol = doorFacing === 'east' ? w - 1 : 0;
-  if (dy === 0) {
-    return { tile: shop ? TileId.RoofShop : TileId.RoofHome, part: 'roof' };
+
+  if (dx !== faceCol) {
+    return { tile: roofTile, part: 'roof' };
   }
-  if (dx === faceCol) {
-    if (dy === doorRow) return { tile: TileId.Door, part: 'door' };
-    return { tile: TileId.Window, part: 'window' };
-  }
-  if (dy === h - 1 || dx === 0 || dx === w - 1) {
-    return { tile: TileId.Window, part: 'window' };
-  }
+
+  if (dy === doorRowLocal) return { tile: TileId.Door, part: 'door' };
+  if (dy === 0 || dy === h - 1) return { tile: TileId.Window, part: 'window' };
   return { tile: TileId.Wall, part: 'wall' };
 }
 
@@ -629,7 +701,8 @@ function isValidRatSpawn(
 
 function buildReserved(): Set<string> {
   const r = new Set<string>();
-  r.add(`${PLAYER_START.x},${PLAYER_START.y}`);
+  const spawn = getPlayerSpawnPoint();
+  r.add(`${spawn.x},${spawn.y}`);
   Object.values(NPC_GRID_POSITIONS).forEach((p) => r.add(`${p.x},${p.y}`));
   return r;
 }
@@ -641,21 +714,148 @@ function markReservedFootprint(reserved: Set<string>, x: number, y: number, w: n
 }
 
 function canPlaceFootprint(
-  map: TileId[][], x: number, y: number, w: number, h: number,
+  map: TileId[][],
+  meta: (BuildingCellMeta | null)[][],
+  x: number,
+  y: number,
+  w: number,
+  h: number,
   reserved: Set<string>,
 ): boolean {
+  if (w < 2 || h < 2) return false;
+
   for (let dy = 0; dy < h; dy++) {
     for (let dx = 0; dx < w; dx++) {
       const px = x + dx;
       const py = y + dy;
       if (!isInMap(px, py)) return false;
       if (reserved.has(`${px},${py}`)) return false;
+      if (meta[py][px]) return false;
       const t = map[py][px];
-      if (isRoadFamily(t) || t === TileId.Sidewalk || t === TileId.Plaza || t === TileId.Fountain) return false;
-      if (STRUCTURE_TILES.has(t)) return false;
+      if (isRoadFamily(t) || t === TileId.Sidewalk || t === TileId.Plaza || t === TileId.Fountain) {
+        return false;
+      }
+      if (isBuildingTileId(t) || t === TileId.Tree || t === TileId.Pond || t === TileId.Farmland) {
+        return false;
+      }
+      if (BORDER_BARRIER_TILES.has(t)) return false;
     }
   }
   return true;
+}
+
+function canReachRoadWithin(map: TileId[][], sx: number, sy: number, maxSteps: number): boolean {
+  const visited = new Set<string>();
+  const queue: [number, number, number][] = [[sx, sy, 0]];
+  visited.add(`${sx},${sy}`);
+
+  while (queue.length > 0) {
+    const [x, y, steps] = queue.shift()!;
+    const t = map[y][x];
+    if (isRoadFamily(t)) return true;
+    if (steps >= maxSteps) continue;
+
+    [[0, -1], [0, 1], [-1, 0], [1, 0]].forEach(([dx, dy]) => {
+      const nx = x + dx;
+      const ny = y + dy;
+      const key = `${nx},${ny}`;
+      if (!isInMap(nx, ny) || visited.has(key)) return;
+      const nt = map[ny][nx];
+      if (
+        isRoadFamily(nt) ||
+        nt === TileId.Sidewalk ||
+        nt === TileId.Path ||
+        isNature(nt)
+      ) {
+        visited.add(key);
+        queue.push([nx, ny, steps + 1]);
+      }
+    });
+  }
+  return false;
+}
+
+function getDoorColumn(w: number, doorFacing: BuildingFacing, doorSlot?: number): number {
+  if (doorFacing === 'east') return w - 1;
+  if (doorFacing === 'west') return 0;
+  return Math.min(w - 1, Math.max(0, doorSlot ?? Math.floor(w / 2)));
+}
+
+function getDoorRowLocal(h: number, doorFacing: BuildingFacing, doorSlot?: number): number {
+  if (doorFacing === 'south') return h - 1;
+  if (doorFacing === 'north') return 0;
+  return Math.min(h - 1, Math.max(0, doorSlot ?? Math.floor(h / 2)));
+}
+
+/** 門口外側第一格必須能鋪設人行道並連接車道 */
+function canPlaceBuildingFacingRoad(
+  map: TileId[][],
+  meta: (BuildingCellMeta | null)[][],
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  doorFacing: BuildingFacing,
+  reserved: Set<string>,
+  doorSlot?: number,
+): boolean {
+  if (!canPlaceFootprint(map, meta, x, y, w, h, reserved)) return false;
+
+  const doorCol = getDoorColumn(w, doorFacing, doorSlot);
+  const doorRowLocal = getDoorRowLocal(h, doorFacing, doorSlot);
+  const doorX = x + doorCol;
+  const doorY = y + doorRowLocal;
+
+  const exterior: { ex: number; ey: number }[] = [];
+  if (doorFacing === 'south') {
+    for (let dx = 0; dx < w; dx++) exterior.push({ ex: x + dx, ey: doorY + 1 });
+  } else if (doorFacing === 'north') {
+    for (let dx = 0; dx < w; dx++) exterior.push({ ex: x + dx, ey: doorY - 1 });
+  } else if (doorFacing === 'east') {
+    exterior.push({ ex: doorX + 1, ey: doorY });
+  } else {
+    exterior.push({ ex: doorX - 1, ey: doorY });
+  }
+
+  return exterior.some(({ ex, ey }) => {
+    if (!isInMap(ex, ey)) return false;
+    const t = map[ey][ex];
+    if (t === TileId.Sidewalk) return canReachRoadWithin(map, ex, ey, 8);
+    if (isNature(t) || t === TileId.Path) return canReachRoadWithin(map, ex, ey, 8);
+    return false;
+  });
+}
+
+function paintBuildingLotSurround(
+  map: TileId[][],
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  doorFacing: BuildingFacing,
+) {
+  for (let dy = -1; dy <= h; dy++) {
+    for (let dx = -1; dx <= w; dx++) {
+      const px = x + dx;
+      const py = y + dy;
+      if (!isInMap(px, py)) continue;
+      const onFootprint = dx >= 0 && dx < w && dy >= 0 && dy < h;
+      if (onFootprint) continue;
+
+      const isFront =
+        (doorFacing === 'south' && dy === h && dx >= 0 && dx < w) ||
+        (doorFacing === 'north' && dy === -1 && dx >= 0 && dx < w) ||
+        (doorFacing === 'east' && dx === w && dy >= 0 && dy < h) ||
+        (doorFacing === 'west' && dx === -1 && dy >= 0 && dy < h);
+
+      const t = map[py][px];
+      if (isFront) continue;
+      if (isRoadFamily(t) || isBuildingTileId(t) || BORDER_BARRIER_TILES.has(t)) continue;
+      if (t === TileId.Sidewalk || t === TileId.Plaza || t === TileId.Fountain) continue;
+      if (t === TileId.Tree || t === TileId.Pond) continue;
+      setTile(map, px, py, TileId.Grass);
+    }
+  }
 }
 
 function forEachLine(x1: number, y1: number, x2: number, y2: number, fn: (x: number, y: number) => void) {
@@ -672,17 +872,26 @@ function forEachLine(x1: number, y1: number, x2: number, y2: number, fn: (x: num
 
 /** 主幹道：筆直橫向 + 縱向貫穿，自然形成十字路口（中心虛線由 renderTile 統一繪製） */
 function paintMainRoadGrid(map: TileId[][]) {
+  const wallY = getMainGateWallY();
+  const maxSidewalkY = wallY - 1;
+
   MAIN_ROAD_H.forEach((y) => {
     for (let x = 0; x < GRID_WIDTH; x++) {
       setTile(map, x, y, TileId.Road);
-      if (y > 0 && isNature(map[y - 1][x])) setTile(map, x, y - 1, TileId.Sidewalk);
-      if (y < GRID_HEIGHT - 1 && isNature(map[y + 1][x])) setTile(map, x, y + 1, TileId.Sidewalk);
+      if (y > 0 && y - 1 <= maxSidewalkY && isNature(map[y - 1][x])) {
+        setTile(map, x, y - 1, TileId.Sidewalk);
+      }
+      if (y < GRID_HEIGHT - 1 && y + 1 <= maxSidewalkY && isNature(map[y + 1][x])) {
+        setTile(map, x, y + 1, TileId.Sidewalk);
+      }
     }
   });
 
   MAIN_ROAD_V.forEach((x) => {
     for (let y = 0; y < GRID_HEIGHT; y++) {
+      if (y > wallY) continue;
       setTile(map, x, y, TileId.Road);
+      if (y >= wallY) continue;
       if (x > 0 && isNature(map[y][x - 1])) setTile(map, x - 1, y, TileId.Sidewalk);
       if (x < GRID_WIDTH - 1 && isNature(map[y][x + 1])) setTile(map, x + 1, y, TileId.Sidewalk);
     }
@@ -691,32 +900,90 @@ function paintMainRoadGrid(map: TileId[][]) {
 
 /** 城鎮入口通道：外圍森林不覆蓋此區，保留進城路 */
 function isTownEntranceGap(x: number, y: number): boolean {
-  return y >= GRID_HEIGHT - MAP_EDGE_DEPTH - 1 && x >= 7 && x <= 12;
+  return y >= GRID_HEIGHT - TOWN_ENTRANCE_DEPTH && x >= 7 && x <= 12;
+}
+
+function edgeDistance(x: number, y: number): number {
+  return Math.min(x, y, GRID_WIDTH - 1 - x, GRID_HEIGHT - 1 - y);
 }
 
 function isNaturalBorderTile(t: TileId): boolean {
   return t === TileId.Grass || t === TileId.GrassDark || t === TileId.FlowerBed;
 }
 
-/** 地圖最外圍 1–2 格：密集樹木 + 深綠草地，營造小鎮被森林包圍感 */
-function paintMapEdgeForest(map: TileId[][]) {
+function isBorderWallRing(x: number, y: number): boolean {
+  return x === 1 || x === GRID_WIDTH - 2 || y === 1 || y === GRID_HEIGHT - 2;
+}
+
+function isBorderMoatRing(x: number, y: number): boolean {
+  return x === 0 || x === GRID_WIDTH - 1 || y === 0 || y === GRID_HEIGHT - 1;
+}
+
+/** 最外圈護城河 + 第二圈連續城牆（嚴格覆寫邊緣陣列） */
+function paintTownBorderBarrier(map: TileId[][]) {
+  for (let x = 0; x < GRID_WIDTH; x++) {
+    setTile(map, x, 0, TileId.Moat);
+    setTile(map, x, GRID_HEIGHT - 1, TileId.Moat);
+  }
+  for (let y = 1; y < GRID_HEIGHT - 1; y++) {
+    setTile(map, 0, y, TileId.Moat);
+    setTile(map, GRID_WIDTH - 1, y, TileId.Moat);
+  }
+
+  for (let x = 1; x < GRID_WIDTH - 1; x++) {
+    setTile(map, x, 1, TileId.TownWall);
+    setTile(map, x, GRID_HEIGHT - 2, TileId.TownWall);
+  }
+  for (let y = 2; y < GRID_HEIGHT - 2; y++) {
+    setTile(map, 1, y, TileId.TownWall);
+    setTile(map, GRID_WIDTH - 2, y, TileId.TownWall);
+  }
+}
+
+function forestTreeProbability(dist: number, x: number, y: number): number {
+  const innerDist = dist - MAP_MOAT_DEPTH - MAP_EDGE_WALL_DEPTH;
+  if (innerDist <= 0) return 0;
+  const span = MAP_FOREST_FRINGE_DEPTH - MAP_MOAT_DEPTH - MAP_EDGE_WALL_DEPTH;
+  const t = 1 - innerDist / span;
+  const falloff = Math.max(0.04, t * 0.55);
+  const jitter = (hash(x, y, 201) % 100) / 100 * 0.18;
+  return Math.min(0.75, falloff + jitter);
+}
+
+/** 護城河內側：稀疏自然樹叢（不覆蓋道路與屏障） */
+function paintInteriorForestFringe(map: TileId[][]) {
   MAP_EDGE_FOREST = new Set<string>();
+  const fringeStart = MAP_EDGE_WALL_DEPTH + MAP_MOAT_DEPTH;
 
   for (let y = 0; y < GRID_HEIGHT; y++) {
     for (let x = 0; x < GRID_WIDTH; x++) {
-      const dist = Math.min(x, y, GRID_WIDTH - 1 - x, GRID_HEIGHT - 1 - y);
-      if (dist >= MAP_EDGE_DEPTH) continue;
       if (isTownEntranceGap(x, y)) continue;
-      if (!isNaturalBorderTile(map[y][x])) continue;
 
-      if (dist === 0) {
-        setTile(map, x, y, TileId.Tree);
-      } else if (hash(x, y, 200) % 4 === 0) {
+      const dist = edgeDistance(x, y);
+      if (dist < fringeStart || dist >= MAP_FOREST_FRINGE_DEPTH) continue;
+
+      const tile = map[y][x];
+      if (
+        isNetworkTile(tile) ||
+        isBuildingTileId(tile) ||
+        BORDER_BARRIER_TILES.has(tile) ||
+        tile === TileId.Fountain ||
+        tile === TileId.Pond ||
+        tile === TileId.Farmland
+      ) {
+        continue;
+      }
+
+      if (!isNaturalBorderTile(tile)) continue;
+
+      MAP_EDGE_FOREST.add(`${x},${y}`);
+      const chance = forestTreeProbability(dist, x, y);
+      const roll = (hash(x, y, 200) % 1000) / 1000;
+      if (roll < chance) {
         setTile(map, x, y, TileId.Tree);
       } else {
-        setTile(map, x, y, TileId.GrassDark);
+        setTile(map, x, y, TileId.Grass);
       }
-      MAP_EDGE_FOREST.add(`${x},${y}`);
     }
   }
 }
@@ -725,30 +992,61 @@ export function isMapEdgeForestCell(x: number, y: number): boolean {
   return MAP_EDGE_FOREST.has(`${x},${y}`);
 }
 
-/** 城鎮入口：左下方廣場，沿主幹道 x=10 往北（須於地圖生成最後呼叫） */
-function paintTownEntrance(map: TileId[][], deco: MapDecoration[]) {
-  for (let x = 8; x <= 11; x++) {
-    if (x === 10) continue;
-    setTile(map, x, 28, x === 9 ? TileId.Plaza : TileId.Sidewalk);
+/** 南側唯一主城門：縱向幹道與第二圈城牆交會處 */
+function paintMainGate(map: TileId[][]) {
+  const { x: gx, y: gy } = getMainGatePosition();
+
+  setTile(map, gx, gy, TileId.MainGate);
+  setTile(map, gx, GRID_HEIGHT - 1, TileId.Bridge);
+
+  const spawn = getPlayerSpawnPoint();
+  if (!isRoadFamily(map[spawn.y][spawn.x])) {
+    setTile(map, spawn.x, spawn.y, TileId.Road);
   }
-  for (let y = 26; y <= 27; y++) {
-    for (let x = 8; x <= 11; x++) {
-      if (x === 10) continue;
+}
+
+/** 城鎮入口廣場：僅在城牆內側鋪設，不覆蓋城牆列 */
+function paintTownEntrance(map: TileId[][]) {
+  const gateX = MAIN_GATE_ROAD_X;
+  const wallY = getMainGateWallY();
+
+  setTile(map, gateX - 1, wallY - 1, TileId.Plaza);
+
+  for (let y = wallY - 2; y <= wallY - 1; y++) {
+    for (let x = gateX - 2; x <= gateX + 1; x++) {
+      if (x === gateX) continue;
       const t = map[y][x];
-      if (!isRoadFamily(t) && !BUILDING_TILES.has(t)) {
+      if (!isRoadFamily(t) && !BUILDING_TILES.has(t) && t !== TileId.Plaza) {
         setTile(map, x, y, TileId.Sidewalk);
       }
     }
   }
-  if (!deco.some((d) => d.id === 'town-entrance')) {
-    deco.push({
-      id: 'town-entrance',
-      x: 9,
-      y: 27,
-      kind: 'emoji',
-      emoji: '🏛️',
-      label: '城鎮入口',
-    });
+}
+
+/** 確保城牆／護城河環帶連續，清除誤蓋在邊界上的道路與人行道 */
+function enforceBorderBarrierIntegrity(map: TileId[][]) {
+  const gateX = MAIN_GATE_ROAD_X;
+  const wallY = getMainGateWallY();
+
+  for (let y = 0; y < GRID_HEIGHT; y++) {
+    for (let x = 0; x < GRID_WIDTH; x++) {
+      if (isBorderMoatRing(x, y)) {
+        if (x === gateX && y === GRID_HEIGHT - 1) {
+          setTile(map, x, y, TileId.Bridge);
+        } else {
+          setTile(map, x, y, TileId.Moat);
+        }
+        continue;
+      }
+
+      if (!isBorderWallRing(x, y)) continue;
+
+      if (x === gateX && y === wallY) {
+        setTile(map, x, y, TileId.MainGate);
+      } else {
+        setTile(map, x, y, TileId.TownWall);
+      }
+    }
   }
 }
 
@@ -809,31 +1107,25 @@ function paintSmallBuilding(
   reserved: Set<string>,
   doorSlot?: number,
 ): boolean {
-  if (!canPlaceFootprint(map, x, y, w, h, reserved)) return false;
+  if (w < 2 || h < 2) return false;
+  if (!canPlaceBuildingFacingRoad(map, meta, x, y, w, h, doorFacing, reserved, doorSlot)) {
+    return false;
+  }
+
   const shop = isShopTheme(theme);
   const buildingId = `b-${x}-${y}-${hash(x, y, 31)}`;
-
-  const doorCol =
-    doorFacing === 'east'
-      ? w - 1
-      : doorFacing === 'west'
-        ? 0
-        : Math.min(w - 1, Math.max(0, doorSlot ?? Math.floor(w / 2)));
-  const doorRow =
-    doorFacing === 'south'
-      ? y + h - 1
-      : doorFacing === 'north'
-        ? y
-        : y + Math.min(h - 1, Math.max(0, doorSlot ?? Math.floor(h / 2)));
-
+  const doorCol = getDoorColumn(w, doorFacing, doorSlot);
+  const doorRowLocal = getDoorRowLocal(h, doorFacing, doorSlot);
   let doorX = x + doorCol;
-  let doorY = doorRow;
+  let doorY = y + doorRowLocal;
 
   for (let dy = 0; dy < h; dy++) {
     for (let dx = 0; dx < w; dx++) {
       const px = x + dx;
       const py = y + dy;
-      const { tile, part } = classifyBuildingCell(dx, dy, w, h, doorFacing, doorCol, doorRow - y, shop);
+      const { tile, part } = classifyBuildingCell(
+        dx, dy, w, h, doorFacing, doorCol, doorRowLocal, shop,
+      );
 
       if (part === 'door') {
         doorX = px;
@@ -841,10 +1133,11 @@ function paintSmallBuilding(
       }
 
       const awningRow =
-        (doorFacing === 'south' && dy === 1) ||
-        (doorFacing === 'north' && dy === h - 2) ||
-        (doorFacing === 'east' && dx === w - 2 && dy > 0) ||
-        (doorFacing === 'west' && dx === 1 && dy > 0);
+        shop &&
+        ((doorFacing === 'south' && dy === 0) ||
+          (doorFacing === 'north' && dy === h - 1) ||
+          (doorFacing === 'east' && dx === 0) ||
+          (doorFacing === 'west' && dx === w - 1));
 
       const besideDoor =
         part !== 'door' &&
@@ -861,7 +1154,7 @@ function paintSmallBuilding(
         footprintW: w,
         footprintH: h,
         doorFacing,
-        isAwningRow: shop && awningRow && part !== 'door' && part !== 'roof',
+        isAwningRow: awningRow && part !== 'door' && part !== 'roof',
         showSign: shop && part === 'door',
         hasWallLamp: shop && besideDoor && hash(px, py, 77) % 2 === 0,
       });
@@ -869,37 +1162,71 @@ function paintSmallBuilding(
   }
 
   paintDoorFrontage(map, doorX, doorY, doorFacing, w, x);
+  paintBuildingLotSurround(map, x, y, w, h, doorFacing);
   markReservedFootprint(reserved, x, y, w, h);
   return true;
 }
 
-function paintLShapedBuilding(
-  map: TileId[][], meta: (BuildingCellMeta | null)[][],
-  x: number, y: number, theme: ShopThemeId, reserved: Set<string>,
-) {
-  const ok1 = paintSmallBuilding(map, meta, x, y, 2, 3, theme, 'south', reserved);
-  if (!ok1) return false;
-  paintSmallBuilding(map, meta, x + 2, y + 1, 2, 2, theme, 'east', reserved);
-  return true;
+function paintTerracedHouses(
+  map: TileId[][],
+  meta: (BuildingCellMeta | null)[][],
+  x: number,
+  y: number,
+  units: number,
+  theme: ShopThemeId,
+  doorFacing: BuildingFacing,
+  reserved: Set<string>,
+): boolean {
+  const unitW = 2;
+  const h = 2;
+  let placed = 0;
+  for (let i = 0; i < units; i++) {
+    if (paintSmallBuilding(map, meta, x + i * unitW, y, unitW, h, theme, doorFacing, reserved, 0)) {
+      placed++;
+    } else {
+      break;
+    }
+  }
+  return placed > 0;
 }
 
 function paintMiniPark(
-  map: TileId[][], deco: MapDecoration[], reserved: Set<string>,
+  map: TileId[][],
+  meta: (BuildingCellMeta | null)[][],
+  deco: MapDecoration[],
+  reserved: Set<string>,
   x: number, y: number, size: number, id: string,
 ) {
-  if (!canPlaceFootprint(map, x, y, size, size, reserved)) return;
+  if (!canPlaceFootprint(map, meta, x, y, size, size, reserved)) return;
+
+  for (let dy = 0; dy < size; dy++) {
+    for (let dx = 0; dx < size; dx++) {
+      setTile(map, x + dx, y + dy, TileId.Grass);
+    }
+  }
+
+  const cx = x + Math.floor(size / 2);
+  const cy = y + Math.floor(size / 2);
+  setTile(map, cx, cy, TileId.FlowerBed);
+  reserved.add(`${cx},${cy}`);
+
   for (let dy = 0; dy < size; dy++) {
     for (let dx = 0; dx < size; dx++) {
       const px = x + dx;
       const py = y + dy;
-      const dist = Math.max(Math.abs(dx - Math.floor(size / 2)), Math.abs(dy - Math.floor(size / 2)));
-      if (dist === 0) setTile(map, px, py, TileId.FlowerBed);
-      else if (dist === Math.floor(size / 2) && hash(px, py, 55) % 3 !== 0) {
+      const key = `${px},${py}`;
+      if (reserved.has(key)) continue;
+      const h = hash(px, py, 55);
+      if (h % 5 === 0) {
         setTile(map, px, py, TileId.Tree);
-        reserved.add(`${px},${py}`);
-      } else setTile(map, px, py, TileId.GrassDark);
+        reserved.add(key);
+      } else if (h % 11 === 0 && size >= 3) {
+        setTile(map, px, py, TileId.FlowerBed);
+        reserved.add(key);
+      }
     }
   }
+
   markReservedFootprint(reserved, x, y, size, size);
   if (size >= 2) {
     deco.push({ id: `${id}-fl`, x: x + 1, y: y + size - 1, kind: 'flowers', variant: hash(x, y) % 4 });
@@ -911,6 +1238,244 @@ function pickTheme(idx: number, side: 'shop' | 'home'): ShopThemeId {
   return COMMERCIAL_POOL[idx % COMMERCIAL_POOL.length];
 }
 
+/** 茂密森林生態區（地圖角落與城牆內側） */
+const DENSE_FOREST_REGIONS: { x0: number; y0: number; x1: number; y1: number; id: string }[] = [
+  { x0: 2, y0: 2, x1: 8, y1: 6, id: 'forest-nw' },
+  { x0: 32, y0: 2, x1: 37, y1: 6, id: 'forest-ne' },
+  { x0: 2, y0: 23, x1: 7, y1: 26, id: 'forest-sw' },
+  { x0: 33, y0: 23, x1: 37, y1: 26, id: 'forest-se' },
+];
+
+function canPaintBiomeCell(
+  map: TileId[][],
+  x: number,
+  y: number,
+  reserved: Set<string>,
+): boolean {
+  if (!isInMap(x, y) || reserved.has(`${x},${y}`)) return false;
+  const t = map[y][x];
+  if (isNetworkTile(t) || isBuildingTileId(t) || BORDER_BARRIER_TILES.has(t)) return false;
+  if (t === TileId.Fountain || t === TileId.Pond || t === TileId.Farmland) return false;
+  return t === TileId.Grass || t === TileId.GrassDark || t === TileId.FlowerBed;
+}
+
+function paintDenseForestBiomes(map: TileId[][], reserved: Set<string>) {
+  DENSE_FOREST_REGIONS.forEach(({ x0, y0, x1, y1, id }) => {
+    for (let y = y0; y <= y1; y++) {
+      for (let x = x0; x <= x1; x++) {
+        if (!canPaintBiomeCell(map, x, y, reserved)) continue;
+        const roll = hash(x, y, 301) % 100;
+        if (roll < 82) {
+          setTile(map, x, y, TileId.Tree);
+          reserved.add(`${x},${y}`);
+        } else if (roll < 92) {
+          setTile(map, x, y, TileId.GrassDark);
+        } else {
+          setTile(map, x, y, TileId.Grass);
+        }
+      }
+    }
+  });
+}
+
+/** 休憩公園、湖泊、農田等特色造景 */
+function paintTownFeatureLandmarks(
+  map: TileId[][],
+  deco: MapDecoration[],
+  reserved: Set<string>,
+) {
+  paintRestTownPark(map, deco, reserved, 11, 16, 5, 4, 'park-rest');
+  paintLake(map, deco, reserved, 3, 23, 5, 4, 'lake-sw');
+  paintFarmland(map, deco, reserved, 31, 3, 6, 5, 'farm-ne');
+}
+
+function paintRestTownPark(
+  map: TileId[][],
+  deco: MapDecoration[],
+  reserved: Set<string>,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  id: string,
+) {
+  for (let dy = 0; dy < h; dy++) {
+    for (let dx = 0; dx < w; dx++) {
+      const px = x + dx;
+      const py = y + dy;
+      if (!canPaintBiomeCell(map, px, py, reserved)) continue;
+      const edge = dx === 0 || dx === w - 1 || dy === 0 || dy === h - 1;
+      if (edge && (dx + dy) % 2 === 0) {
+        setTile(map, px, py, TileId.FlowerBed);
+      } else {
+        setTile(map, px, py, TileId.Plaza);
+      }
+      reserved.add(`${px},${py}`);
+    }
+  }
+
+  const benches: [number, number][] = [
+    [x + 1, y + 1],
+    [x + w - 2, y + 1],
+    [x + 1, y + h - 2],
+    [x + w - 2, y + h - 2],
+  ];
+  benches.forEach(([bx, by], i) => {
+    if (isInMap(bx, by) && map[by][bx] === TileId.Plaza) {
+      deco.push({ id: `${id}-bench-${i}`, x: bx, y: by, kind: 'bench' });
+    }
+  });
+
+  for (let dy = 1; dy < h - 1; dy++) {
+    for (let dx = 1; dx < w - 1; dx++) {
+      const px = x + dx;
+      const py = y + dy;
+      if (map[py][px] !== TileId.Plaza) continue;
+      if (hash(px, py, 88) % 3 === 0) {
+        setTile(map, px, py, TileId.FlowerBed);
+        deco.push({ id: `${id}-fl-${px}-${py}`, x: px, y: py, kind: 'flowers', variant: hash(px, py, 89) % 4 });
+      }
+    }
+  }
+}
+
+function paintLake(
+  map: TileId[][],
+  deco: MapDecoration[],
+  reserved: Set<string>,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  id: string,
+) {
+  const cx = x + Math.floor(w / 2);
+  const cy = y + Math.floor(h / 2);
+
+  for (let dy = 0; dy < h; dy++) {
+    for (let dx = 0; dx < w; dx++) {
+      const px = x + dx;
+      const py = y + dy;
+      if (!isInMap(px, py)) continue;
+      const dist = Math.max(Math.abs(dx - Math.floor(w / 2)), Math.abs(dy - Math.floor(h / 2)));
+      if (dist <= Math.min(Math.floor(w / 2), Math.floor(h / 2))) {
+        if (canPaintBiomeCell(map, px, py, reserved) || map[py][px] === TileId.Grass) {
+          setTile(map, px, py, TileId.Pond);
+          reserved.add(`${px},${py}`);
+        }
+      } else if (canPaintBiomeCell(map, px, py, reserved)) {
+        if (hash(px, py, 310) % 3 !== 0) {
+          setTile(map, px, py, TileId.Tree);
+          reserved.add(`${px},${py}`);
+        } else {
+          setTile(map, px, py, TileId.GrassDark);
+        }
+      }
+    }
+  }
+
+  [[cx - 2, cy], [cx + 2, cy], [cx, cy - 1], [cx, cy + 1]].forEach(([rx, ry], i) => {
+    if (isInMap(rx, ry) && map[ry][rx] === TileId.Grass) {
+      setTile(map, rx, ry, TileId.GrassDark);
+      deco.push({ id: `${id}-rock-${i}`, x: rx, y: ry, kind: 'emoji', emoji: '🪨' });
+    }
+  });
+}
+
+function paintFarmland(
+  map: TileId[][],
+  deco: MapDecoration[],
+  reserved: Set<string>,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  id: string,
+) {
+  for (let dy = 0; dy < h; dy++) {
+    for (let dx = 0; dx < w; dx++) {
+      const px = x + dx;
+      const py = y + dy;
+      if (!canPaintBiomeCell(map, px, py, reserved)) continue;
+      setTile(map, px, py, TileId.Farmland);
+      reserved.add(`${px},${py}`);
+      if (hash(px, py, 320) % 4 === 0) {
+        deco.push({ id: `${id}-crop-${px}-${py}`, x: px, y: py, kind: 'emoji', emoji: '🌱' });
+      }
+    }
+  }
+}
+
+/** 填補大於 4×4 的空曠草地 */
+function fillLargeGrassPatches(map: TileId[][], deco: MapDecoration[], reserved: Set<string>) {
+  const visited = new Set<string>();
+
+  for (let y = MAP_FOREST_FRINGE_DEPTH; y < GRID_HEIGHT - MAP_FOREST_FRINGE_DEPTH; y++) {
+    for (let x = MAP_FOREST_FRINGE_DEPTH; x < GRID_WIDTH - MAP_FOREST_FRINGE_DEPTH; x++) {
+      const key = `${x},${y}`;
+      if (visited.has(key)) continue;
+      const t = map[y][x];
+      if (t !== TileId.Grass && t !== TileId.GrassDark) continue;
+
+      const queue: [number, number][] = [[x, y]];
+      const region: [number, number][] = [];
+      visited.add(key);
+
+      while (queue.length > 0) {
+        const [cx, cy] = queue.shift()!;
+        region.push([cx, cy]);
+        [[0, -1], [0, 1], [-1, 0], [1, 0]].forEach(([dx, dy]) => {
+          const nx = cx + dx;
+          const ny = cy + dy;
+          const nk = `${nx},${ny}`;
+          if (!isInMap(nx, ny) || visited.has(nk)) return;
+          const nt = map[ny][nx];
+          if (nt !== TileId.Grass && nt !== TileId.GrassDark) return;
+          visited.add(nk);
+          queue.push([nx, ny]);
+        });
+      }
+
+      if (region.length <= 16) continue;
+
+      let minX = GRID_WIDTH;
+      let maxX = 0;
+      let minY = GRID_HEIGHT;
+      let maxY = 0;
+      region.forEach(([rx, ry]) => {
+        minX = Math.min(minX, rx);
+        maxX = Math.max(maxX, rx);
+        minY = Math.min(minY, ry);
+        maxY = Math.max(maxY, ry);
+      });
+      if (maxX - minX + 1 <= 4 && maxY - minY + 1 <= 4) continue;
+
+      region.forEach(([rx, ry], i) => {
+        if (reserved.has(`${rx},${ry}`)) return;
+        const h = hash(rx, ry, 400 + i);
+        if (h % 11 === 0) {
+          setTile(map, rx, ry, TileId.Tree);
+          reserved.add(`${rx},${ry}`);
+        } else if (h % 9 === 0) {
+          setTile(map, rx, ry, TileId.FlowerBed);
+          reserved.add(`${rx},${ry}`);
+        } else if (h % 7 === 0) {
+          const ornament = h % 3;
+          if (ornament === 0) {
+            deco.push({ id: `fill-fl-${rx}-${ry}`, x: rx, y: ry, kind: 'flowers', variant: h % 4 });
+          } else if (ornament === 1) {
+            deco.push({ id: `fill-dog-${rx}-${ry}`, x: rx, y: ry, kind: 'emoji', emoji: '🐕' });
+          } else {
+            deco.push({ id: `fill-cat-${rx}-${ry}`, x: rx, y: ry, kind: 'emoji', emoji: '🐈' });
+          }
+        } else if (h % 17 === 0) {
+          deco.push({ id: `fill-fl-${rx}-${ry}`, x: rx, y: ry, kind: 'flowers', variant: h % 4 });
+        }
+      });
+    }
+  }
+}
+
 function paintOrganicDistricts(
   map: TileId[][], meta: (BuildingCellMeta | null)[][],
   deco: MapDecoration[], reserved: Set<string>,
@@ -920,55 +1485,58 @@ function paintOrganicDistricts(
   MAIN_ROAD_H.forEach((roadY) => {
     for (let x = 3; x < GRID_WIDTH - 5; ) {
       const roll = hash(x, roadY, 10) % 10;
-      const gap = hash(x, roadY, 11) % 3;
 
       if (roll === 0) {
-        paintMiniPark(map, deco, reserved, x, roadY - 5, 2, `park-n-${x}`);
+        paintMiniPark(map, meta, deco, reserved, x, roadY - 4, 2, `park-n-${x}`);
         x += 3;
         continue;
       }
-      if (roll === 1) {
-        paintMiniPark(map, deco, reserved, x, roadY + 3, 3, `park-s-${x}`);
-        x += 4;
-        continue;
-      }
 
-      const w = 2 + (hash(x, roadY, 12) % 3);
-      const h = 2 + (hash(x, roadY, 13) % 2);
+      const isShop = roll % 3 !== 0;
+      const w = isShop ? 3 : 2;
+      const h = 2;
       const offset = hash(x, roadY, 14) % 2;
+      const theme = pickTheme(idx++, isShop ? 'shop' : 'home');
 
       const northY = roadY - 2 - h - offset;
-      if (northY >= 1) {
-        const theme = pickTheme(idx++, roll % 3 === 0 ? 'home' : 'shop');
-        if (roll % 5 === 0) {
-          paintLShapedBuilding(map, meta, x, northY, theme, reserved);
+      if (northY >= MAP_FOREST_FRINGE_DEPTH) {
+        if (!isShop && roll % 4 === 0) {
+          paintTerracedHouses(map, meta, x, northY, 2, theme, 'south', reserved);
         } else {
           paintSmallBuilding(map, meta, x, northY, w, h, theme, 'south', reserved);
         }
       }
 
-      if (hash(x, roadY, 15) % 3 !== 0) {
-        const southY = roadY + 2 + offset;
-        if (southY + h < GRID_HEIGHT - 2) {
-          const theme2 = pickTheme(idx++, 'home');
-          paintSmallBuilding(map, meta, x + (gap % 2), southY, w, h, theme2, 'north', reserved);
-        }
+      const southY = roadY + 2 + offset;
+      if (southY + h < GRID_HEIGHT - MAP_FOREST_FRINGE_DEPTH) {
+        const homeTheme = pickTheme(idx++, 'home');
+        paintSmallBuilding(map, meta, x, southY, 2, 2, homeTheme, 'north', reserved);
       }
 
-      x += w + 1 + gap;
+      x += w + 1;
     }
   });
 
   MAIN_ROAD_V.forEach((roadX) => {
-    for (let y = 4; y < GRID_HEIGHT - 5; y += 2 + (hash(roadX, y, 16) % 3)) {
-      if (hash(roadX, y, 17) % 6 === 0) {
-        paintMiniPark(map, deco, reserved, roadX - 4, y, 2, `park-w-${roadX}-${y}`);
+    for (let y = MAP_FOREST_FRINGE_DEPTH; y < GRID_HEIGHT - MAP_FOREST_FRINGE_DEPTH; y += 2) {
+      if (hash(roadX, y, 17) % 9 === 0) {
+        paintMiniPark(map, meta, deco, reserved, roadX - 4, y, 2, `park-w-${roadX}-${y}`);
         continue;
       }
-      const theme = pickTheme(idx++, hash(roadX, y, 18) % 2 === 0 ? 'shop' : 'home');
-      const w = 2 + (hash(roadX, y, 19) % 2);
-      const h = 3;
-      paintSmallBuilding(map, meta, roadX - 2 - w, y, w, h, theme, 'east', reserved);
+
+      const isShop = hash(roadX, y, 18) % 3 === 0;
+      const w = isShop ? 3 : 2;
+      const h = 2;
+      const theme = pickTheme(idx++, isShop ? 'shop' : 'home');
+      const westX = roadX - 2 - w;
+
+      if (westX >= MAP_FOREST_FRINGE_DEPTH) {
+        if (!isShop && hash(roadX, y, 23) % 5 === 0) {
+          paintTerracedHouses(map, meta, westX, y, 2, theme, 'east', reserved);
+        } else {
+          paintSmallBuilding(map, meta, westX, y, w, h, theme, 'east', reserved);
+        }
+      }
     }
   });
 }
@@ -976,9 +1544,21 @@ function paintOrganicDistricts(
 function paintLandmarks(
   map: TileId[][], meta: (BuildingCellMeta | null)[][], reserved: Set<string>,
 ) {
-  paintSmallBuilding(map, meta, 5, 5, 4, 3, 'restaurant', 'south', reserved, 1);
-  paintSmallBuilding(map, meta, 19, 5, 5, 4, 'clinic', 'south', reserved, 2);
-  paintSmallBuilding(map, meta, 28, 19, 5, 4, 'warehouse', 'south', reserved, 2);
+  const landmarks: {
+    x: number; y: number; w: number; h: number;
+    theme: ShopThemeId; facing: BuildingFacing; slot?: number;
+  }[] = [
+    { x: 5, y: 5, w: 4, h: 3, theme: 'restaurant', facing: 'south', slot: 1 },
+    { x: 19, y: 5, w: 5, h: 3, theme: 'clinic', facing: 'south', slot: 2 },
+    { x: 28, y: 19, w: 5, h: 3, theme: 'warehouse', facing: 'south', slot: 2 },
+    { x: 14, y: 9, w: 3, h: 2, theme: 'magic_library', facing: 'south' },
+    { x: 24, y: 11, w: 3, h: 2, theme: 'flower', facing: 'south' },
+    { x: 6, y: 12, w: 2, h: 2, theme: 'house_gray', facing: 'east' },
+  ];
+
+  landmarks.forEach(({ x, y, w, h, theme, facing, slot }) => {
+    paintSmallBuilding(map, meta, x, y, w, h, theme, facing, reserved, slot);
+  });
 }
 
 function isInRoundaboutFootprint(x: number, y: number, margin = 0): boolean {
@@ -1245,7 +1825,7 @@ function paintDirtySpots(
   return spots;
 }
 
-/** 公園樹叢：有機聚集 */
+/** 公園綠地：連貫淺草區塊 + 隨機點綴樹木與花圃 */
 function paintParkClusters(map: TileId[][], deco: MapDecoration[], reserved: Set<string>) {
   PARK_CLUSTERS.forEach(({ cx, cy, r, id }) => {
     for (let dy = -r; dy <= r; dy++) {
@@ -1257,21 +1837,35 @@ function paintParkClusters(map: TileId[][], deco: MapDecoration[], reserved: Set
         const t = map[y][x];
         if (isRoadFamily(t) || t === TileId.Sidewalk || BUILDING_TILES.has(t)) continue;
 
+        setTile(map, x, y, TileId.Grass);
+      }
+    }
+
+    setTile(map, cx, cy, TileId.FlowerBed);
+    reserved.add(`${cx},${cy}`);
+
+    for (let dy = -r; dy <= r; dy++) {
+      for (let dx = -r; dx <= r; dx++) {
+        const x = cx + dx;
+        const y = cy + dy;
+        const key = `${x},${y}`;
+        if (!isInMap(x, y) || reserved.has(key)) continue;
+        if (isRoadFamily(map[y][x]) || map[y][x] === TileId.Sidewalk || BUILDING_TILES.has(map[y][x])) {
+          continue;
+        }
+
         const dist = Math.max(Math.abs(dx), Math.abs(dy));
-        if (dist === 0) {
+        const h = hash(x, y, 80);
+        if (dist >= 1 && h % 4 === 0) {
+          setTile(map, x, y, TileId.Tree);
+          reserved.add(key);
+        } else if (dist >= 1 && h % 9 === 0) {
           setTile(map, x, y, TileId.FlowerBed);
-          reserved.add(`${x},${y}`);
-        } else if (dist === r && hash(x, y, 80) % 4 !== 0) {
-          setTile(map, x, y, TileId.Tree);
-          reserved.add(`${x},${y}`);
-        } else if (dist === r - 1 && hash(x, y, 81) % 5 === 0) {
-          setTile(map, x, y, TileId.Tree);
-          reserved.add(`${x},${y}`);
-        } else if (t === TileId.Grass || t === TileId.GrassDark) {
-          setTile(map, x, y, TileId.GrassDark);
+          reserved.add(key);
         }
       }
     }
+
     deco.push({
       id: `${id}-bench`,
       x: cx + r,
@@ -1281,42 +1875,54 @@ function paintParkClusters(map: TileId[][], deco: MapDecoration[], reserved: Set
   });
 }
 
-/** 行道樹：沿主幹道人行道外側草地，等距排列 */
+function countGrassNeighbors(map: TileId[][], x: number, y: number): number {
+  return [[0, -1], [0, 1], [-1, 0], [1, 0]].reduce((n, [dx, dy]) => {
+    const nx = x + dx;
+    const ny = y + dy;
+    if (!isInMap(nx, ny)) return n;
+    const t = map[ny][nx];
+    return n + (t === TileId.Grass || t === TileId.Sidewalk ? 1 : 0);
+  }, 0);
+}
+
+/** 行道樹：僅種在人行道外側連續淺草地上，避開邊界森林帶 */
 function paintStreetTrees(map: TileId[][], reserved: Set<string>) {
+  const minEdge = MAP_FOREST_FRINGE_DEPTH + 1;
+
   MAIN_ROAD_H.forEach((roadY) => {
-    for (let x = 5; x < GRID_WIDTH - 5; x += STREET_TREE_SPACING) {
+    for (let x = minEdge; x < GRID_WIDTH - minEdge; x += STREET_TREE_SPACING) {
       if (isMainRoadIntersection(x, roadY)) continue;
       if (isInRoundaboutFootprint(x, roadY, 1)) continue;
 
       for (const sy of [roadY - 1, roadY + 1]) {
         if (!isInMap(x, sy) || map[sy][x] !== TileId.Sidewalk) continue;
         const gy = sy < roadY ? sy - 1 : sy + 1;
-        if (!isInMap(x, gy)) continue;
+        if (!isInMap(x, gy) || edgeDistance(x, gy) < minEdge) continue;
         if (reserved.has(`${x},${gy}`)) continue;
-        const gt = map[gy][x];
-        if (gt === TileId.Grass || gt === TileId.GrassDark) {
-          setTile(map, x, gy, TileId.Tree);
-          reserved.add(`${x},${gy}`);
-        }
+        if (map[gy][x] !== TileId.Grass) continue;
+        if (countGrassNeighbors(map, x, gy) < 2) continue;
+
+        setTile(map, x, gy, TileId.Tree);
+        reserved.add(`${x},${gy}`);
       }
     }
   });
 
   MAIN_ROAD_V.forEach((roadX) => {
-    for (let y = 5; y < GRID_HEIGHT - 5; y += STREET_TREE_SPACING) {
+    for (let y = minEdge; y < GRID_HEIGHT - minEdge; y += STREET_TREE_SPACING) {
       if (isMainRoadIntersection(roadX, y)) continue;
       if (isInRoundaboutFootprint(roadX, y, 1)) continue;
 
       for (const sx of [roadX - 1, roadX + 1]) {
         if (!isInMap(sx, y) || map[y][sx] !== TileId.Sidewalk) continue;
         const gx = sx < roadX ? sx - 1 : sx + 1;
-        if (!isInMap(gx, y)) continue;
+        if (!isInMap(gx, y) || edgeDistance(gx, y) < minEdge) continue;
         if (reserved.has(`${gx},${y}`)) continue;
-        const gt = map[y][gx];
-        if (gt === TileId.Grass || gt === TileId.GrassDark) {
-          setTile(map, gx, y, TileId.Tree);
-          reserved.add(`${gx},${y}`);
-        }
+        if (map[y][gx] !== TileId.Grass) continue;
+        if (countGrassNeighbors(map, gx, y) < 2) continue;
+
+        setTile(map, gx, y, TileId.Tree);
+        reserved.add(`${gx},${y}`);
       }
     }
   });
@@ -1548,10 +2154,21 @@ function paintStreetProps(map: TileId[][], deco: MapDecoration[]) {
   );
 }
 
+function touchesRoadOrSidewalkOnMap(map: TileId[][], x: number, y: number): boolean {
+  const neighbors = [[0, -1], [0, 1], [-1, 0], [1, 0]] as const;
+  return neighbors.some(([dx, dy]) => {
+    const t = map[y + dy]?.[x + dx];
+    return t !== undefined && (isRoadFamily(t) || t === TileId.Sidewalk || t === TileId.Path);
+  });
+}
+
 function paintGrassVariation(map: TileId[][]) {
   for (let y = 0; y < GRID_HEIGHT; y++) {
     for (let x = 0; x < GRID_WIDTH; x++) {
-      if (map[y][x] === TileId.Grass && hash(x, y) % 5 === 0) {
+      if (map[y][x] !== TileId.Grass) continue;
+      if (edgeDistance(x, y) < MAP_FOREST_FRINGE_DEPTH) continue;
+      if (touchesRoadOrSidewalkOnMap(map, x, y)) continue;
+      if (hash(x, y) % 9 === 0) {
         map[y][x] = TileId.GrassDark;
       }
     }
@@ -1752,54 +2369,200 @@ function isDeepParkSpot(map: TileId[][], x: number, y: number): boolean {
   }).length >= 2;
 }
 
-/** 隱藏寶物：建築後方、死巷、樹叢深處 */
+function buildTreasureStaticBlocked(
+  questPoints: QuestPoint[],
+  reserved: Set<string>,
+): Set<string> {
+  const blocked = new Set(reserved);
+  questPoints.forEach((p) => blocked.add(`${p.x},${p.y}`));
+  Object.values(NPC_GRID_POSITIONS).forEach((p) => blocked.add(`${p.x},${p.y}`));
+  return blocked;
+}
+
+function isPathfindingWalkable(
+  map: TileId[][],
+  meta: (BuildingCellMeta | null)[][],
+  x: number,
+  y: number,
+  staticBlocked: Set<string>,
+): boolean {
+  if (!isInMap(x, y)) return false;
+  if (staticBlocked.has(`${x},${y}`)) return false;
+  if (meta[y][x]) return false;
+  const t = map[y][x];
+  if (BLOCKING_TILES.has(t)) return false;
+  return WALKABLE_TILES.has(t);
+}
+
+function countWalkableNeighbors(
+  map: TileId[][],
+  meta: (BuildingCellMeta | null)[][],
+  x: number,
+  y: number,
+  staticBlocked: Set<string>,
+): number {
+  return [[0, -1], [0, 1], [-1, 0], [1, 0]].reduce((n, [dx, dy]) => {
+    return n + (isPathfindingWalkable(map, meta, x + dx, y + dy, staticBlocked) ? 1 : 0);
+  }, 0);
+}
+
+function isNearRoadNetwork(map: TileId[][], x: number, y: number): boolean {
+  for (let dy = -2; dy <= 2; dy++) {
+    for (let dx = -2; dx <= 2; dx++) {
+      if (dx === 0 && dy === 0) continue;
+      const nx = x + dx;
+      const ny = y + dy;
+      if (!isInMap(nx, ny)) continue;
+      const t = map[ny][nx];
+      if (isRoadFamily(t) || t === TileId.Sidewalk || t === TileId.Path || t === TileId.Plaza) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+function isBorderWallCornerTrap(map: TileId[][], x: number, y: number): boolean {
+  if (edgeDistance(x, y) < MAP_FOREST_FRINGE_DEPTH) return true;
+
+  let barrierNeighbors = 0;
+  let treeNeighbors = 0;
+  let walkableNeighbors = 0;
+
+  [[0, -1], [0, 1], [-1, 0], [1, 0]].forEach(([dx, dy]) => {
+    const nx = x + dx;
+    const ny = y + dy;
+    if (!isInMap(nx, ny)) {
+      barrierNeighbors++;
+      return;
+    }
+    const t = map[ny][nx];
+    if (BORDER_BARRIER_TILES.has(t)) barrierNeighbors++;
+    else if (t === TileId.Tree) treeNeighbors++;
+    else if (WALKABLE_TILES.has(t) && !BLOCKING_TILES.has(t)) walkableNeighbors++;
+  });
+
+  if (barrierNeighbors >= 2) return true;
+  if (barrierNeighbors >= 1 && walkableNeighbors <= 1 && treeNeighbors >= 2) return true;
+  return false;
+}
+
+function isValidTreasureLocation(
+  map: TileId[][],
+  meta: (BuildingCellMeta | null)[][],
+  x: number,
+  y: number,
+  staticBlocked: Set<string>,
+): boolean {
+  if (staticBlocked.has(`${x},${y}`)) return false;
+  if (meta[y][x]) return false;
+
+  const t = map[y][x];
+  if (t !== TileId.Grass && t !== TileId.GrassDark && t !== TileId.Path) return false;
+  if (isRoadFamily(t) || isOnMainRoadSurface(map, x, y)) return false;
+  if (!isPathfindingWalkable(map, meta, x, y, staticBlocked)) return false;
+  if (countWalkableNeighbors(map, meta, x, y, staticBlocked) < 1) return false;
+  if (isBorderWallCornerTrap(map, x, y)) return false;
+  return true;
+}
+
+function isReachableFromPlayer(
+  map: TileId[][],
+  meta: (BuildingCellMeta | null)[][],
+  tx: number,
+  ty: number,
+  staticBlocked: Set<string>,
+): boolean {
+  if (!isPathfindingWalkable(map, meta, tx, ty, staticBlocked)) return false;
+
+  const start = getPlayerSpawnPoint();
+  const visited = new Set<string>();
+  const queue: [number, number][] = [[start.x, start.y]];
+  visited.add(`${start.x},${start.y}`);
+
+  while (queue.length > 0) {
+    const [x, y] = queue.shift()!;
+    if (x === tx && y === ty) return true;
+
+    [[0, -1], [0, 1], [-1, 0], [1, 0]].forEach(([dx, dy]) => {
+      const nx = x + dx;
+      const ny = y + dy;
+      const key = `${nx},${ny}`;
+      if (visited.has(key)) return;
+      if (!isPathfindingWalkable(map, meta, nx, ny, staticBlocked)) return;
+      visited.add(key);
+      queue.push([nx, ny]);
+    });
+  }
+
+  return false;
+}
+
+function scoreTreasureCandidate(
+  map: TileId[][],
+  meta: (BuildingCellMeta | null)[][],
+  x: number,
+  y: number,
+): number {
+  let score = 0;
+  if (isNearRoadNetwork(map, x, y)) score += 55;
+  if (touchesRoadOrSidewalkOnMap(map, x, y)) score += 35;
+  if (isAlleyCell(map, x, y)) score += 25;
+  if (isBehindBuildingWall(map, meta, x, y)) score += 20;
+  if (countWalkableNeighbors(map, meta, x, y, new Set()) >= 2) score += 15;
+  if (isDeadEndSpot(map, x, y)) score -= 40;
+  if (isDeepParkSpot(map, x, y)) score -= 35;
+  if (countWallNeighbors(map, x, y) >= 3) score -= 20;
+  return score;
+}
+
+/** 隱藏寶物：確保每個寶箱皆可從玩家起點步行抵達 */
 function generateTreasures(
   map: TileId[][],
   meta: (BuildingCellMeta | null)[][],
   questPoints: QuestPoint[],
   reserved: Set<string>,
 ): TreasureSpot[] {
-  const blocked = new Set(reserved);
-  questPoints.forEach((p) => blocked.add(`${p.x},${p.y}`));
-  Object.values(NPC_GRID_POSITIONS).forEach((p) => blocked.add(`${p.x},${p.y}`));
-  blocked.add(`${PLAYER_START.x},${PLAYER_START.y}`);
-
+  const staticBlocked = buildTreasureStaticBlocked(questPoints, reserved);
   const candidates: { x: number; y: number; score: number }[] = [];
 
   for (let y = 1; y < GRID_HEIGHT - 1; y++) {
     for (let x = 1; x < GRID_WIDTH - 1; x++) {
-      const key = `${x},${y}`;
-      if (blocked.has(key)) continue;
-      if (meta[y][x]) continue;
+      if (!isValidTreasureLocation(map, meta, x, y, staticBlocked)) continue;
+      if (!isReachableFromPlayer(map, meta, x, y, staticBlocked)) continue;
 
-      const t = map[y][x];
-      if (t !== TileId.Grass && t !== TileId.GrassDark && t !== TileId.Path) continue;
-      if (isRoadFamily(t) || isOnMainRoadSurface(map, x, y)) continue;
-
-      let score = 0;
-      if (isDeadEndSpot(map, x, y)) score += 55;
-      if (isBehindBuildingWall(map, meta, x, y)) score += 45;
-      if (isAlleyCell(map, x, y)) score += 35;
-      if (isDeepParkSpot(map, x, y)) score += 40;
-      if (countWallNeighbors(map, x, y) >= 2) score += 25;
-
-      if (score >= 35) candidates.push({ x, y, score });
+      const score = scoreTreasureCandidate(map, meta, x, y);
+      candidates.push({ x, y, score });
     }
   }
 
   candidates.sort((a, b) => b.score - a.score || hash(a.x, a.y, 90) - hash(b.x, b.y, 90));
+
+  const fallbackCandidates = candidates.length > 0
+    ? candidates
+    : (() => {
+        const relaxed: { x: number; y: number; score: number }[] = [];
+        for (let y = 1; y < GRID_HEIGHT - 1; y++) {
+          for (let x = 1; x < GRID_WIDTH - 1; x++) {
+            if (!isPathfindingWalkable(map, meta, x, y, staticBlocked)) continue;
+            if (!isReachableFromPlayer(map, meta, x, y, staticBlocked)) continue;
+            relaxed.push({ x, y, score: hash(x, y, 92) });
+          }
+        }
+        return relaxed;
+      })();
 
   const targetCount = Math.max(3, 3 + (hash(42, 99, 7) % 3));
   const requiredItemOrder = shuffledTreasureItemOrder(hash(42, 99, 7));
   const spots: TreasureSpot[] = [];
   const used = new Set<string>();
 
-  for (const c of candidates) {
-    if (spots.length >= targetCount) break;
+  const tryPlaceSpot = (c: { x: number; y: number }) => {
     const key = `${c.x},${c.y}`;
-    if (used.has(key)) continue;
+    if (used.has(key)) return false;
     const tooClose = spots.some((s) => Math.abs(s.x - c.x) + Math.abs(s.y - c.y) < 4);
-    if (tooClose) continue;
+    if (tooClose) return false;
+    if (!isReachableFromPlayer(map, meta, c.x, c.y, staticBlocked)) return false;
 
     used.add(key);
     const variant: TreasureVariant = hash(c.x, c.y, 91) % 2 === 0 ? 'chest' : 'sparkle';
@@ -1813,6 +2576,21 @@ function generateTreasures(
       itemId,
       label: item.name,
     });
+    return true;
+  };
+
+  for (const c of fallbackCandidates) {
+    if (spots.length >= targetCount) break;
+    tryPlaceSpot(c);
+  }
+
+  if (spots.length < targetCount) {
+    for (let y = 1; y < GRID_HEIGHT - 1 && spots.length < targetCount; y++) {
+      for (let x = 1; x < GRID_WIDTH - 1 && spots.length < targetCount; x++) {
+        if (!isReachableFromPlayer(map, meta, x, y, staticBlocked)) continue;
+        tryPlaceSpot({ x, y });
+      }
+    }
   }
 
   return spots;
@@ -1830,6 +2608,7 @@ export function generateMap(): TileId[][] {
   paintSecondaryAlleys(map);
   cleanupDisconnectedPaths(map);
   paintOrganicDistricts(map, meta, deco, reserved);
+  paintTownFeatureLandmarks(map, deco, reserved);
   paintLandmarks(map, meta, reserved);
   paintRoundaboutPlaza(map, deco);
   const recycleDirtySpots = paintRecyclingCenterBase(map, deco, reserved);
@@ -1842,8 +2621,13 @@ export function generateMap(): TileId[][] {
   paintBenches(map, deco);
   paintStreetProps(map, deco);
   paintGrassVariation(map);
-  paintTownEntrance(map, deco);
-  paintMapEdgeForest(map);
+  paintDenseForestBiomes(map, reserved);
+  fillLargeGrassPatches(map, deco, reserved);
+  paintTownBorderBarrier(map);
+  paintMainGate(map);
+  paintTownEntrance(map);
+  enforceBorderBarrierIntegrity(map);
+  paintInteriorForestFringe(map);
 
   buildingMetaGrid = meta;
   MAP_DECORATIONS = deco;
@@ -1877,7 +2661,13 @@ export function isBuildingTile(x: number, y: number): boolean {
 }
 
 export function isBlockedTile(x: number, y: number): boolean {
-  return BLOCKING_TILES.has(getTileId(x, y));
+  const id = getTileId(x, y);
+  return BLOCKING_TILES.has(id);
+}
+
+/** 邊界屏障（護城河、城牆、城門、木橋） */
+export function isBorderBarrierTile(x: number, y: number): boolean {
+  return BORDER_BARRIER_TILES.has(getTileId(x, y));
 }
 
 export function isWalkableGround(x: number, y: number): boolean {

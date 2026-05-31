@@ -1,8 +1,7 @@
 export const GRID_WIDTH = 40;
 export const GRID_HEIGHT = 30;
 export const TILE_SIZE = 32;
-/** 左下方城鎮入口：沿 x=10 主幹道往北探索 */
-export const PLAYER_START = { x: 9, y: 28 };
+/** 玩家起始座標由 tilemap.getPlayerSpawnPoint() 動態決定（主城門正上方幹道） */
 
 /** NPC 散落在店門口、噴水池旁等 */
 export const NPC_GRID_POSITIONS: Record<'Chef' | 'Doctor' | 'Captain', { x: number; y: number }> = {

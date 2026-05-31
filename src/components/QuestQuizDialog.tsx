@@ -3,6 +3,7 @@ import { AnimatePresence } from 'motion/react';
 import { QuestQuestion } from '../constants/gameData';
 import RpgDialogBox, { optionKeyToIndex, QUIZ_OPTION_KEYS } from './RpgDialogBox';
 import { getPlayerPortraitFallback } from '../constants/characterAssets';
+import { useBgm } from '../contexts/BgmContext';
 
 const OPTION_LABELS = ['A', 'B', 'C', 'D'] as const;
 
@@ -25,6 +26,7 @@ export default function QuestQuizDialog({
   onCorrect,
   onSeekNpc,
 }: QuestQuizDialogProps) {
+  const { playSfx } = useBgm();
   const [phase, setPhase] = useState<'choose' | 'feedback'>('choose');
   const [selectedOption, setSelectedOption] = useState<number | null>(null);
   const [isCorrect, setIsCorrect] = useState(false);
@@ -33,11 +35,13 @@ export default function QuestQuizDialog({
   const handleOptionSelect = useCallback(
     (index: number) => {
       if (phase !== 'choose') return;
+      const correct = index === question.correctAnswer;
       setSelectedOption(index);
-      setIsCorrect(index === question.correctAnswer);
+      setIsCorrect(correct);
       setPhase('feedback');
+      playSfx(correct ? 'success' : 'fail');
     },
-    [phase, question.correctAnswer],
+    [phase, question.correctAnswer, playSfx],
   );
 
   const handleContinue = useCallback(() => {
