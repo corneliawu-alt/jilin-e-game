@@ -1,0 +1,620 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", "Noto Sans TC", ui-sans-serif, system-ui, sans-serif;
+}
+
+@keyframes badge-pop {
+  0% { transform: scale(0.5) rotate(-15deg); }
+  50% { transform: scale(1.2) rotate(5deg); }
+  100% { transform: scale(1) rotate(0deg); }
+}
+
+.badge-pop {
+  animation: badge-pop 0.5s ease-out;
+}
+
+@keyframes rat-capture-pop {
+  0% { transform: scale(0.85); filter: grayscale(1) opacity(0.5); }
+  45% { transform: scale(1.35); filter: grayscale(0) opacity(1); }
+  70% { transform: scale(1.1); }
+  100% { transform: scale(1); filter: grayscale(0) opacity(1); }
+}
+
+.rat-slot-capture {
+  animation: rat-capture-pop 0.6s ease-out;
+}
+
+@keyframes quest-progress-stripe {
+  0% { background-position: 0 0; }
+  100% { background-position: 28px 0; }
+}
+
+.quest-progress-fill {
+  background-image: linear-gradient(
+      90deg,
+      transparent 0%,
+      transparent 40%,
+      rgb(255 255 255 / 0.22) 40%,
+      rgb(255 255 255 / 0.22) 50%,
+      transparent 50%,
+      transparent 100%
+    ),
+    linear-gradient(90deg, #fb923c, #facc15);
+  background-size: 28px 100%, 100% 100%;
+  animation: quest-progress-stripe 0.8s linear infinite;
+}
+
+.dashboard-parchment {
+  background-color: #ffedd5;
+  background-image: radial-gradient(ellipse at 20% 0%, rgb(255 255 255 / 0.5) 0%, transparent 55%);
+}
+
+/* ── 草地（格紋 + 斑點，搭配 bg-emerald-400） ── */
+
+.tile-grass {
+  background-image:
+    linear-gradient(rgb(255 255 255 / 0.08) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(255 255 255 / 0.08) 1px, transparent 1px),
+    radial-gradient(circle at 22% 28%, rgb(6 78 59 / 0.35) 1px, transparent 1px),
+    radial-gradient(circle at 68% 55%, rgb(255 255 255 / 0.2) 0.5px, transparent 0.5px),
+    radial-gradient(circle at 45% 72%, rgb(4 120 87 / 0.25) 1px, transparent 1px),
+    radial-gradient(ellipse at 50% 100%, rgb(6 95 70 / 0.3) 0%, transparent 55%);
+  background-size: 8px 8px, 8px 8px, 6px 6px, 5px 5px, 7px 7px, 100% 40%;
+}
+
+.tile-grass-dark {
+  background-image:
+    linear-gradient(rgb(0 0 0 / 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(0 0 0 / 0.06) 1px, transparent 1px),
+    radial-gradient(circle at 35% 40%, rgb(6 78 59 / 0.45) 1.5px, transparent 1.5px),
+    radial-gradient(circle at 75% 25%, rgb(255 255 255 / 0.1) 0.5px, transparent 0.5px);
+  background-size: 8px 8px, 8px 8px, 7px 7px, 4px 4px;
+}
+
+.tile-dirt {
+  background-color: #9a6b3d;
+  background-image:
+    radial-gradient(circle at 25% 35%, rgb(0 0 0 / 0.1) 1px, transparent 1px),
+    radial-gradient(circle at 75% 65%, rgb(255 255 255 / 0.08) 0.5px, transparent 0.5px),
+    radial-gradient(ellipse at 50% 50%, rgb(120 53 15 / 0.15) 0%, transparent 70%);
+  background-size: 5px 5px, 7px 7px, 100% 100%;
+}
+
+/* ── 人行道／車道質感（搭配 Tailwind 底色） ── */
+
+.tile-sidewalk {
+  background-image:
+    linear-gradient(90deg, rgb(120 113 108 / 0.2) 1px, transparent 1px),
+    linear-gradient(rgb(120 113 108 / 0.2) 1px, transparent 1px);
+  background-size: 50% 50%;
+}
+
+.tile-road-lane {
+  background-image:
+    radial-gradient(circle at 25% 30%, rgb(255 255 255 / 0.05) 0%, transparent 45%),
+    radial-gradient(circle at 75% 70%, rgb(0 0 0 / 0.12) 0%, transparent 40%);
+}
+
+.tile-road-center-h,
+.tile-road-center-v {
+  background-image:
+    radial-gradient(circle at 30% 40%, rgb(255 255 255 / 0.04) 0%, transparent 50%);
+}
+
+.tile-road-dash-h {
+  background-image:
+    repeating-linear-gradient(
+      90deg,
+      transparent 0,
+      transparent 8px,
+      rgb(250 204 21 / 0.85) 8px,
+      rgb(250 204 21 / 0.85) 14px,
+      transparent 14px,
+      transparent 22px
+    ),
+    radial-gradient(circle at 30% 40%, rgb(255 255 255 / 0.04) 0%, transparent 50%);
+  background-size: 100% 3px, 100% 100%;
+  background-position: center, center;
+  background-repeat: repeat-x, no-repeat;
+}
+
+.tile-road-dash-v {
+  background-image:
+    repeating-linear-gradient(
+      0deg,
+      transparent 0,
+      transparent 8px,
+      rgb(250 204 21 / 0.85) 8px,
+      rgb(250 204 21 / 0.85) 14px,
+      transparent 14px,
+      transparent 22px
+    ),
+    radial-gradient(circle at 30% 40%, rgb(255 255 255 / 0.04) 0%, transparent 50%);
+  background-size: 3px 100%, 100% 100%;
+  background-position: center, center;
+  background-repeat: repeat-y, no-repeat;
+}
+
+/* ── 廣場地磚 ── */
+
+.tile-plaza {
+  background-image:
+    linear-gradient(90deg, rgb(148 163 184 / 0.18) 1px, transparent 1px),
+    linear-gradient(rgb(148 163 184 / 0.18) 1px, transparent 1px),
+    radial-gradient(circle at 30% 30%, rgb(255 255 255 / 0.35) 0%, transparent 45%);
+  background-size: 10px 10px, 10px 10px, 100% 100%;
+}
+
+/* 圓環廣場內圈：放射狀石磚 */
+.tile-roundabout-plaza {
+  background-image:
+    repeating-conic-gradient(
+      from 45deg at 50% 50%,
+      rgb(148 163 184 / 0.22) 0deg 90deg,
+      rgb(255 255 255 / 0.12) 90deg 180deg
+    ),
+    radial-gradient(circle at 50% 50%, rgb(255 255 255 / 0.4) 0%, transparent 65%);
+  background-size: 100% 100%, 100% 100%;
+}
+
+.tile-roundabout-floral {
+  box-shadow: inset 0 0 8px rgb(52 211 153 / 0.35);
+}
+
+.tile-roundabout-road {
+  box-shadow: inset 0 0 6px rgb(0 0 0 / 0.25);
+}
+
+/* ── 地圖外圍森林帶 ── */
+
+.tile-forest-border {
+  background-image:
+    radial-gradient(circle at 30% 25%, rgb(21 128 61 / 0.5) 0%, transparent 50%),
+    radial-gradient(circle at 70% 75%, rgb(0 0 0 / 0.2) 0%, transparent 45%),
+    linear-gradient(180deg, rgb(22 101 52 / 0.35) 0%, rgb(20 83 45 / 0.55) 100%);
+  box-shadow: inset 0 0 12px rgb(0 0 0 / 0.25);
+}
+
+/* ── 遮陽篷條紋 ── */
+
+.awning-strip-3d {
+  box-shadow:
+    0 3px 6px rgb(0 0 0 / 0.4),
+    0 1px 0 rgb(255 255 255 / 0.15),
+    inset 0 -2px 4px rgb(0 0 0 / 0.12);
+}
+
+.awning-strip-bakery {
+  background: repeating-linear-gradient(90deg, #ef4444 0 5px, #fff 5px 10px);
+  box-shadow: 0 2px 4px rgb(0 0 0 / 0.35), inset 0 -1px 0 rgb(0 0 0 / 0.15);
+}
+
+.awning-strip-cafe {
+  background: repeating-linear-gradient(90deg, #eab308 0 5px, #fff 5px 10px);
+  box-shadow: 0 2px 4px rgb(0 0 0 / 0.35), inset 0 -1px 0 rgb(0 0 0 / 0.15);
+}
+
+.awning-strip-grocery {
+  background: repeating-linear-gradient(90deg, #3b82f6 0 5px, #fff 5px 10px);
+  box-shadow: 0 2px 4px rgb(0 0 0 / 0.35), inset 0 -1px 0 rgb(0 0 0 / 0.15);
+}
+
+.awning-strip-neutral {
+  background: repeating-linear-gradient(90deg, #78716c 0 5px, #e7e5e4 5px 10px);
+  box-shadow: 0 2px 4px rgb(0 0 0 / 0.3);
+}
+
+.awning-strip-flower {
+  background: repeating-linear-gradient(90deg, #ec4899 0 5px, #86efac 5px 10px);
+  box-shadow: 0 2px 4px rgb(0 0 0 / 0.35), inset 0 -1px 0 rgb(0 0 0 / 0.15);
+}
+
+.awning-strip-bookstore {
+  background: repeating-linear-gradient(90deg, #1e3a8a 0 5px, #fef3c7 5px 10px);
+  box-shadow: 0 2px 4px rgb(0 0 0 / 0.35), inset 0 -1px 0 rgb(0 0 0 / 0.15);
+}
+
+.awning-strip-diner {
+  background: repeating-linear-gradient(90deg, #ef4444 0 5px, #facc15 5px 10px);
+  box-shadow: 0 2px 4px rgb(0 0 0 / 0.35), inset 0 -1px 0 rgb(0 0 0 / 0.15);
+}
+
+/* ── 地形交界立體感 ── */
+
+.tile-edge-grass {
+  box-shadow:
+    inset 0 3px 6px rgb(0 0 0 / 0.16),
+    inset 0 1px 0 rgb(0 0 0 / 0.06);
+}
+
+.tile-edge-road {
+  box-shadow:
+    inset 0 -3px 7px rgb(0 0 0 / 0.24),
+    inset 0 1px 0 rgb(255 255 255 / 0.06);
+}
+
+.tile-edge-sidewalk {
+  box-shadow:
+    inset 0 2px 5px rgb(0 0 0 / 0.14),
+    inset 0 -1px 3px rgb(0 0 0 / 0.08);
+}
+
+.tile-edge-sidewalk-curb {
+  box-shadow:
+    inset 0 2px 4px rgb(0 0 0 / 0.12),
+    inset 0 -2px 4px rgb(255 255 255 / 0.08);
+}
+
+.tile-edge-path {
+  box-shadow:
+    inset 0 2px 5px rgb(0 0 0 / 0.18),
+    inset 0 -1px 2px rgb(255 255 255 / 0.05);
+}
+
+/* ── 路面細節 ── */
+
+.tile-zebra-h {
+  background: repeating-linear-gradient(
+    90deg,
+    rgb(255 255 255 / 0.85) 0 4px,
+    transparent 4px 8px
+  );
+}
+
+.tile-zebra-v {
+  background: repeating-linear-gradient(
+    0deg,
+    rgb(255 255 255 / 0.85) 0 4px,
+    transparent 4px 8px
+  );
+}
+
+.lane-center-h {
+  background: repeating-linear-gradient(
+    90deg,
+    transparent 0 6px,
+    rgb(250 204 21 / 0.92) 6px 12px,
+    transparent 12px 18px
+  );
+}
+
+.lane-center-v {
+  background: repeating-linear-gradient(
+    0deg,
+    transparent 0 6px,
+    rgb(250 204 21 / 0.92) 6px 12px,
+    transparent 12px 18px
+  );
+}
+
+.tile-manhole {
+  background-image:
+    radial-gradient(circle at 35% 30%, rgb(255 255 255 / 0.35) 0%, transparent 45%),
+    repeating-conic-gradient(from 0deg at 50% 50%, rgb(71 85 105 / 0.5) 0deg 90deg, transparent 90deg 180deg);
+}
+
+/* ── 噴水池波紋 ── */
+
+@keyframes fountain-pulse {
+  0%, 100% { opacity: 0.85; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.02); }
+}
+
+.fountain-ripple {
+  animation: fountain-pulse 2.8s ease-in-out infinite;
+}
+
+/* ── 樹木、花圃 ── */
+
+.tile-tree-base {
+  background: transparent;
+}
+
+/* ── 建築無縫接合（消除內部格線） ── */
+
+.tile-building-cell {
+  z-index: 2;
+  border: none;
+  outline: none;
+}
+
+.tile-seam-l {
+  margin-left: -1px;
+  width: calc(100% + 1px);
+}
+
+.tile-seam-r {
+  margin-right: -1px;
+  width: calc(100% + 1px);
+}
+
+.tile-seam-t {
+  margin-top: -1px;
+  height: calc(100% + 1px);
+}
+
+.tile-seam-b {
+  margin-bottom: -1px;
+  height: calc(100% + 1px);
+}
+
+.tile-building-exterior-edge {
+  filter: drop-shadow(0 2px 3px rgb(0 0 0 / 0.28));
+}
+
+.tile-roof {
+  box-shadow: inset 0 -2px 0 rgb(0 0 0 / 0.18);
+}
+
+.tile-building-cell.tile-roof,
+.tile-building-cell.tile-wall,
+.tile-building-cell.tile-wall-brick,
+.tile-building-cell.tile-window,
+.tile-building-cell.tile-door {
+  box-shadow: none;
+}
+
+.tile-building-cell.tile-building-exterior-edge.tile-roof {
+  box-shadow: inset 0 -3px 0 rgb(0 0 0 / 0.22);
+}
+
+.tile-roof-shingle {
+  box-shadow:
+    inset 0 4px 8px rgb(0 0 0 / 0.28),
+    inset 0 -2px 4px rgb(255 255 255 / 0.1);
+}
+
+.tile-roof-shingle-overlay {
+  background-image:
+    repeating-linear-gradient(
+      -38deg,
+      transparent,
+      transparent 4px,
+      rgb(0 0 0 / 0.1) 4px,
+      rgb(0 0 0 / 0.1) 5px
+    ),
+    repeating-linear-gradient(
+      38deg,
+      transparent,
+      transparent 7px,
+      rgb(255 255 255 / 0.06) 7px,
+      rgb(255 255 255 / 0.06) 8px
+    );
+  mix-blend-mode: multiply;
+  opacity: 0.85;
+}
+
+.tile-roof-eave {
+  background: linear-gradient(180deg, rgb(0 0 0 / 0.35) 0%, rgb(0 0 0 / 0.1) 100%);
+}
+
+.tile-wall {
+  box-shadow: inset 1px 0 2px rgb(0 0 0 / 0.05), inset -1px 0 2px rgb(0 0 0 / 0.05);
+}
+
+.tile-wall-brick {
+  background-image:
+    linear-gradient(180deg, rgb(255 255 255 / 0.14) 0%, transparent 35%),
+    repeating-linear-gradient(
+      90deg,
+      transparent,
+      transparent 7px,
+      rgb(0 0 0 / 0.04) 7px,
+      rgb(0 0 0 / 0.04) 8px
+    );
+}
+
+.tile-window-glass {
+  box-shadow:
+    inset 0 0 0 1px rgb(255 255 255 / 0.7),
+    inset 0 2px 6px rgb(255 255 255 / 0.35),
+    inset 0 -2px 4px rgb(0 0 0 / 0.12);
+}
+
+.tile-fence-wood {
+  background-color: #a8a29e;
+  background-image: repeating-linear-gradient(
+    90deg,
+    #78716c 0,
+    #78716c 3px,
+    #d6d3d1 3px,
+    #d6d3d1 6px
+  );
+  box-shadow: inset 0 -2px 0 rgb(0 0 0 / 0.2);
+}
+
+.tile-flower-bed {
+  background-image:
+    radial-gradient(circle at 20% 30%, rgb(74 222 128 / 0.5) 0%, transparent 40%),
+    radial-gradient(circle at 80% 70%, rgb(134 239 172 / 0.4) 0%, transparent 45%);
+}
+
+.tile-pond {
+  background-image: radial-gradient(ellipse at 50% 40%, rgb(255 255 255 / 0.25) 0%, transparent 55%);
+}
+
+.tile-roof-home,
+.tile-roof-shop {
+  box-shadow: inset 0 -3px 0 rgb(0 0 0 / 0.2);
+}
+
+.tile-wall,
+.tile-window,
+.tile-door {
+  box-shadow: inset 2px 0 3px rgb(0 0 0 / 0.08), inset -2px 0 3px rgb(0 0 0 / 0.08);
+}
+
+/* ── 餐廳 ── */
+
+.tile-roof-restaurant {
+  background-color: #c2410c;
+  background-image: repeating-linear-gradient(
+    -42deg,
+    transparent,
+    transparent 5px,
+    rgb(0 0 0 / 0.14) 5px,
+    rgb(0 0 0 / 0.14) 7px
+  );
+  box-shadow: inset 0 -4px 0 rgb(0 0 0 / 0.25);
+}
+
+.tile-wall-restaurant {
+  background-color: #ea580c;
+  background-image: linear-gradient(180deg, rgb(255 255 255 / 0.12) 0%, transparent 45%);
+  box-shadow: inset 3px 0 4px rgb(0 0 0 / 0.1), inset -3px 0 4px rgb(0 0 0 / 0.1);
+}
+
+.tile-window-restaurant {
+  background: linear-gradient(180deg, #fef08a 0%, #fbbf24 100%);
+  box-shadow: inset 0 0 0 2px #9a3412, inset 0 0 10px rgb(255 255 255 / 0.45);
+}
+
+.tile-door-restaurant {
+  background: linear-gradient(180deg, #7c2d12 0%, #431407 100%);
+  box-shadow: inset 0 0 0 2px #fde68a, inset 0 -6px 8px rgb(0 0 0 / 0.35);
+}
+
+/* ── 診所 ── */
+
+.tile-roof-clinic {
+  background-color: #0284c7;
+  background-image: repeating-linear-gradient(
+    90deg,
+    transparent,
+    transparent 7px,
+    rgb(0 0 0 / 0.12) 7px,
+    rgb(0 0 0 / 0.12) 9px
+  );
+  box-shadow: inset 0 -4px 0 rgb(0 0 0 / 0.25);
+}
+
+.tile-wall-clinic {
+  background-color: #e0f2fe;
+  background-image: linear-gradient(180deg, rgb(255 255 255 / 0.55) 0%, transparent 50%);
+  box-shadow: inset 0 0 0 1px rgb(14 116 144 / 0.35);
+}
+
+.tile-window-clinic {
+  background: linear-gradient(180deg, #bae6fd 0%, #7dd3fc 100%);
+  box-shadow: inset 0 0 0 2px #075985, inset 0 0 8px rgb(255 255 255 / 0.65);
+}
+
+.tile-door-clinic {
+  background: linear-gradient(180deg, #0369a1 0%, #0c4a6e 100%);
+  box-shadow: inset 0 0 0 2px #e0f2fe, inset 0 -6px 8px rgb(0 0 0 / 0.35);
+}
+
+/* ── 倉庫 ── */
+
+.tile-roof-warehouse {
+  background-color: #44403c;
+  background-image: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 6px,
+    rgb(0 0 0 / 0.18) 6px,
+    rgb(0 0 0 / 0.18) 8px
+  );
+  box-shadow: inset 0 -4px 0 rgb(0 0 0 / 0.3);
+}
+
+.tile-wall-warehouse {
+  background-color: #a8a29e;
+  background-image: linear-gradient(90deg, rgb(0 0 0 / 0.07) 2px, transparent 2px);
+  background-size: 10px 100%;
+}
+
+.tile-window-warehouse {
+  background-color: #57534e;
+  box-shadow: inset 0 0 0 2px #292524, inset 0 0 6px rgb(255 255 255 / 0.15);
+}
+
+.tile-door-warehouse {
+  background: linear-gradient(180deg, #57534e 0%, #1c1917 100%);
+  box-shadow: inset 0 0 0 2px #e7e5e4, inset 0 -6px 8px rgb(0 0 0 / 0.35);
+}
+
+/* ── 立體陰影 ── */
+
+.entity-shadow {
+  filter: drop-shadow(0 5px 8px rgb(0 0 0 / 0.45));
+}
+
+.scenery-shadow {
+  filter: drop-shadow(0 8px 12px rgb(0 0 0 / 0.45));
+}
+
+.building-tile-shadow {
+  filter: drop-shadow(0 3px 5px rgb(0 0 0 / 0.35));
+}
+
+.ground-ellipse-shadow {
+  background: radial-gradient(ellipse, rgb(0 0 0 / 0.35) 0%, transparent 70%);
+}
+
+/* ── 登入頁 Hero（明亮暖色調） ── */
+
+.login-shell {
+  background: linear-gradient(160deg, #fffbeb 0%, #fef3c7 35%, #e0f2fe 100%);
+  box-shadow:
+    0 20px 50px rgb(251 191 36 / 0.12),
+    inset 0 1px 0 rgb(255 255 255 / 0.8);
+}
+
+.login-hero-bg {
+  background:
+    radial-gradient(ellipse 70% 55% at 50% 15%, rgb(186 230 253 / 0.55) 0%, transparent 55%),
+    radial-gradient(ellipse 50% 45% at 85% 75%, rgb(254 215 170 / 0.35) 0%, transparent 50%),
+    radial-gradient(ellipse 40% 40% at 10% 80%, rgb(167 243 208 / 0.25) 0%, transparent 45%),
+    linear-gradient(165deg, #fffbeb 0%, #fef9c3 45%, #e0f2fe 100%);
+}
+
+.login-hero-grid {
+  background-image:
+    linear-gradient(rgb(251 191 36 / 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(251 191 36 / 0.06) 1px, transparent 1px);
+  background-size: 32px 32px;
+  opacity: 0.6;
+  mask-image: radial-gradient(ellipse at center, black 25%, transparent 80%);
+}
+
+@keyframes login-float {
+  0%, 100% { transform: translateY(0) scale(1); opacity: 0.25; }
+  50% { transform: translateY(-10px) scale(1.1); opacity: 0.55; }
+}
+
+.login-particle {
+  animation: login-float ease-in-out infinite;
+}
+
+.game-logo-text {
+  color: transparent;
+  background-image: linear-gradient(
+    180deg,
+    #fcd34d 0%,
+    #f59e0b 40%,
+    #d97706 70%,
+    #b45309 100%
+  );
+  background-clip: text;
+  -webkit-background-clip: text;
+  filter: drop-shadow(0 1px 0 rgb(255 255 255 / 0.9))
+    drop-shadow(0 2px 4px rgb(180 83 9 / 0.25));
+  letter-spacing: 0.04em;
+}
+
+.login-glass-panel {
+  background: rgb(255 255 255 / 0.72);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgb(255 255 255 / 0.9);
+  box-shadow:
+    0 8px 32px rgb(251 191 36 / 0.12),
+    inset 0 1px 0 rgb(255 255 255 / 0.95);
+}
+
+body {
+  margin: 0;
+  overflow: hidden;
+  user-select: none;
+}

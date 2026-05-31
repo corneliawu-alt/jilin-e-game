@@ -1,0 +1,24 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Student records: Anyone can create, only admins can read all (optional: allow list for public leaderboard if needed)
+    match /studentRecords/{recordId} {
+      allow create: if isValidRecord(request.resource.data);
+      allow read: if true; // Allow reading for leaderboard or personal result check
+    }
+
+    function isValidRecord(data) {
+      return data.keys().hasAll(['classId', 'seatNumber', 'name', 'score', 'timestamp'])
+        && data.classId is string && data.classId.size() <= 10
+        && data.seatNumber is string && data.seatNumber.size() <= 5
+        && data.name is string && data.name.size() <= 50
+        && data.score is number && data.score >= 0 && data.score <= 100
+        && data.timestamp is timestamp;
+    }
+  }
+}

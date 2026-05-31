@@ -1,0 +1,43 @@
+{
+  "entities": {
+    "StudentRecord": {
+      "title": "Student Record",
+      "description": "Stores the information and quiz score of a student.",
+      "type": "object",
+      "properties": {
+        "classId": {
+          "type": "string",
+          "description": "The class ID of the student (e.g. 501)"
+        },
+        "seatNumber": {
+          "type": "string",
+          "description": "The seat number of the student"
+        },
+        "name": {
+          "type": "string",
+          "description": "The name of the student"
+        },
+        "score": {
+          "type": "number",
+          "description": "The total score achieved in the environmental quiz"
+        },
+        "answers": {
+          "type": "array",
+          "description": "The student's answers to the 10 questions"
+        },
+        "timestamp": {
+          "type": "string",
+          "format": "date-time",
+          "description": "The time when the record was created"
+        }
+      },
+      "required": ["classId", "seatNumber", "name", "score", "timestamp"]
+    }
+  },
+  "firestore": {
+    "/studentRecords/{recordId}": {
+      "schema": "StudentRecord",
+      "description": "Collection of student performance records"
+    }
+  }
+}
