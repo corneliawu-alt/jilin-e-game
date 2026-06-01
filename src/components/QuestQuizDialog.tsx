@@ -2,10 +2,12 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { AnimatePresence } from 'motion/react';
 import { QuestQuestion } from '../constants/gameData';
 import RpgDialogBox, { optionKeyToIndex, QUIZ_OPTION_KEYS } from './RpgDialogBox';
-import { getPlayerPortraitFallback } from '../constants/characterAssets';
-import { useBgm } from '../contexts/BgmContext';
-
 const OPTION_LABELS = ['A', 'B', 'C', 'D'] as const;
+
+export type QuestAnswerOutcome =
+  | { kind: 'correct' }
+  | { kind: 'retry'; message: string }
+  | { kind: 'locked'; message: string };
 
 interface QuestQuizDialogProps {
   question: QuestQuestion;
@@ -13,8 +15,9 @@ interface QuestQuizDialogProps {
   portraitSrc: string;
   portraitFallback?: string;
   portraitAlt: string;
-  onCorrect: () => void;
-  onSeekNpc: (targetNPC: QuestQuestion['targetNPC']) => void;
+  onAnswer: (selectedIndex: number) => QuestAnswerOutcome;
+  onCompleteCorrect: () => void;
+  onDismissLocked: () => void;
 }
 
 export default function QuestQuizDialog({
@@ -23,35 +26,48 @@ export default function QuestQuizDialog({
   portraitSrc,
   portraitFallback,
   portraitAlt,
-  onCorrect,
-  onSeekNpc,
+  onAnswer,
+  onCompleteCorrect,
+  onDismissLocked,
 }: QuestQuizDialogProps) {
-  const { playSfx } = useBgm();
   const [phase, setPhase] = useState<'choose' | 'feedback'>('choose');
   const [selectedOption, setSelectedOption] = useState<number | null>(null);
-  const [isCorrect, setIsCorrect] = useState(false);
+  const [outcome, setOutcome] = useState<QuestAnswerOutcome | null>(null);
+  const [feedbackText, setFeedbackText] = useState('');
   const [hoverOption, setHoverOption] = useState<number | null>(null);
+
+  const resetToChoose = useCallback(() => {
+    setPhase('choose');
+    setSelectedOption(null);
+    setOutcome(null);
+    setFeedbackText('');
+    setHoverOption(null);
+  }, []);
 
   const handleOptionSelect = useCallback(
     (index: number) => {
       if (phase !== 'choose') return;
-      const correct = index === question.correctAnswer;
+      const result = onAnswer(index);
       setSelectedOption(index);
-      setIsCorrect(correct);
+      setOutcome(result);
+      setFeedbackText(
+        result.kind === 'correct' ? question.successMsg : result.message,
+      );
       setPhase('feedback');
-      playSfx(correct ? 'success' : 'fail');
     },
-    [phase, question.correctAnswer, playSfx],
+    [phase, onAnswer, question.successMsg],
   );
 
   const handleContinue = useCallback(() => {
-    if (phase !== 'feedback') return;
-    if (isCorrect) {
-      onCorrect();
+    if (phase !== 'feedback' || !outcome) return;
+    if (outcome.kind === 'correct') {
+      onCompleteCorrect();
+    } else if (outcome.kind === 'retry') {
+      resetToChoose();
     } else {
-      onSeekNpc(question.targetNPC);
+      onDismissLocked();
     }
-  }, [phase, isCorrect, onCorrect, onSeekNpc, question.targetNPC]);
+  }, [phase, outcome, onCompleteCorrect, resetToChoose, onDismissLocked]);
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -91,12 +107,9 @@ export default function QuestQuizDialog({
     />
   );
 
-  const displayText =
-    phase === 'feedback'
-      ? isCorrect
-        ? question.successMsg
-        : question.errorMsg
-      : question.question;
+  const isCorrectFeedback = outcome?.kind === 'correct';
+  const showOptionReview =
+    phase === 'feedback' && selectedOption !== null && outcome?.kind !== 'retry';
 
   return (
     <RpgDialogBox
@@ -110,7 +123,7 @@ export default function QuestQuizDialog({
       footer={
         phase === 'feedback' ? (
           <div className="flex justify-end">
-            {isCorrect ? (
+            {isCorrectFeedback ? (
               <button
                 type="button"
                 onClick={handleContinue}
@@ -119,14 +132,23 @@ export default function QuestQuizDialog({
               >
                 繼續 ▶
               </button>
+            ) : outcome?.kind === 'retry' ? (
+              <button
+                type="button"
+                onClick={handleContinue}
+                className="px-4 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-500 text-white
+                  font-black text-xs sm:text-sm transition-all duration-200 shadow-md"
+              >
+                再試一次 ▶
+              </button>
             ) : (
               <button
                 type="button"
                 onClick={handleContinue}
-                className="px-4 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-500 text-white
-                  font-black text-xs sm:text-sm transition-all duration-200 shadow-md animate-pulse"
+                className="px-4 py-1.5 rounded-lg bg-slate-600 hover:bg-slate-500 text-white
+                  font-black text-xs sm:text-sm transition-all duration-200 shadow-md"
               >
-                去尋找 NPC ▶
+                離開 ▶
               </button>
             )}
           </div>
@@ -135,9 +157,9 @@ export default function QuestQuizDialog({
     >
       <p
         className={`text-sm sm:text-base leading-relaxed font-medium mb-3 min-h-[2.5rem] transition-colors duration-300
-          ${phase === 'feedback' && !isCorrect ? 'text-rose-100' : 'text-white'}`}
+          ${phase === 'feedback' && !isCorrectFeedback ? 'text-rose-100' : 'text-white'}`}
       >
-        {displayText}
+        {phase === 'choose' ? question.question : feedbackText}
       </p>
 
       <AnimatePresence mode="wait">
@@ -180,7 +202,7 @@ export default function QuestQuizDialog({
           </div>
         )}
 
-        {phase === 'feedback' && selectedOption !== null && (
+        {showOptionReview && (
           <div key="result" className="flex flex-wrap gap-2">
             {question.options.map((option, idx) => {
               const label = OPTION_LABELS[idx];

@@ -12,8 +12,15 @@ import {
   attachBgmErrorHandler,
   attachSfxErrorHandler,
   BGM_DUCK_RESTORE_FALLBACK_MS,
+  BOMP_DUCK_HOLD_MS,
+  BOMP_FADE_RESTORE_MS,
+  BOMP_GAIN,
+  BGM_FADE_OUT_MS,
   createBgmAudio,
+  createBompAudio,
   createSfxAudio,
+  createWinAudio,
+  routeAudioThroughGain,
   DEFAULT_BGM_VOLUME,
   getDuckedBgmVolume,
   safePlayBgm,
@@ -29,6 +36,11 @@ type BgmContextValue = {
   toggle: () => void;
   playSfx: (type: SfxType) => void;
   playIntroSting: () => void;
+  /** 完成 3 位 NPC 解鎖打怪：播放 bomp 並閃避／漸強還原 BGM */
+  playRatUnlockBomp: () => void;
+  /** 結局：BGM 淡出後播放 win.mp3 */
+  beginVictoryMusic: () => void;
+  stopVictoryMusic: () => void;
 };
 
 const BgmContext = createContext<BgmContextValue | null>(null);
@@ -37,11 +49,25 @@ export function BgmProvider({ children }: { children: ReactNode }) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const successSfxRef = useRef<HTMLAudioElement | null>(null);
   const failSfxRef = useRef<HTMLAudioElement | null>(null);
+  const laughSfxRef = useRef<HTMLAudioElement | null>(null);
+  const bompSfxRef = useRef<HTMLAudioElement | null>(null);
+  const bompAudioCtxRef = useRef<AudioContext | null>(null);
+  const bompGainRef = useRef<GainNode | null>(null);
+  const winAudioRef = useRef<HTMLAudioElement | null>(null);
+  const victoryMusicStartedRef = useRef(false);
   const duckRestoreTimerRef = useRef<number | null>(null);
   const duckCleanupRef = useRef<(() => void) | null>(null);
+  const bgmFadeFrameRef = useRef<number | null>(null);
   const [enabled, setEnabled] = useState(true);
   const [unlocked, setUnlocked] = useState(false);
   const [loadFailed, setLoadFailed] = useState(false);
+
+  const cancelBgmFade = useCallback(() => {
+    if (bgmFadeFrameRef.current !== null) {
+      cancelAnimationFrame(bgmFadeFrameRef.current);
+      bgmFadeFrameRef.current = null;
+    }
+  }, []);
 
   const clearDuckRestore = useCallback(() => {
     if (duckRestoreTimerRef.current !== null) {
@@ -50,7 +76,32 @@ export function BgmProvider({ children }: { children: ReactNode }) {
     }
     duckCleanupRef.current?.();
     duckCleanupRef.current = null;
-  }, []);
+    cancelBgmFade();
+  }, [cancelBgmFade]);
+
+  const fadeBgmVolumeTo = useCallback(
+    (targetVolume: number, durationMs: number) => {
+      const bgm = audioRef.current;
+      if (!bgm || loadFailed) return;
+
+      cancelBgmFade();
+      const startVolume = bgm.volume;
+      const startedAt = performance.now();
+
+      const step = (now: number) => {
+        const progress = Math.min(1, (now - startedAt) / durationMs);
+        bgm.volume = startVolume + (targetVolume - startVolume) * progress;
+        if (progress < 1) {
+          bgmFadeFrameRef.current = requestAnimationFrame(step);
+        } else {
+          bgmFadeFrameRef.current = null;
+        }
+      };
+
+      bgmFadeFrameRef.current = requestAnimationFrame(step);
+    },
+    [loadFailed, cancelBgmFade],
+  );
 
   const restoreBgmVolume = useCallback(() => {
     const bgm = audioRef.current;
@@ -65,23 +116,56 @@ export function BgmProvider({ children }: { children: ReactNode }) {
 
     const successSfx = createSfxAudio('success');
     const failSfx = createSfxAudio('fail');
+    const laughSfx = createSfxAudio('laugh');
+    const bompSfx = createBompAudio();
     successSfxRef.current = successSfx;
     failSfxRef.current = failSfx;
+    laughSfxRef.current = laughSfx;
+    bompSfxRef.current = bompSfx;
     const detachSuccess = attachSfxErrorHandler(successSfx, 'success', () => {});
     const detachFail = attachSfxErrorHandler(failSfx, 'fail', () => {});
+    const detachLaugh = attachSfxErrorHandler(laughSfx, 'laugh', () => {});
+    const onBompError = () => console.warn('[audio] 音效載入失敗：/music/bomp.mp3');
+    bompSfx.addEventListener('error', onBompError);
+    const detachBomp = () => bompSfx.removeEventListener('error', onBompError);
+
+    const routed = routeAudioThroughGain(bompSfx, BOMP_GAIN);
+    if (routed) {
+      bompAudioCtxRef.current = routed.context;
+      bompGainRef.current = routed.gain;
+    }
+
+    const winAudio = createWinAudio();
+    winAudioRef.current = winAudio;
+    const onWinError = () => console.warn('[audio] 勝利配樂載入失敗：/music/win.mp3');
+    winAudio.addEventListener('error', onWinError);
 
     return () => {
       clearDuckRestore();
       detachBgm();
       detachSuccess();
       detachFail();
+      detachLaugh();
+      laughSfx.src = '';
+      detachBomp();
+      winAudio.removeEventListener('error', onWinError);
+      winAudio.pause();
+      winAudio.src = '';
+      void bompAudioCtxRef.current?.close();
       bgm.pause();
       bgm.src = '';
       successSfx.src = '';
       failSfx.src = '';
+      bompSfx.src = '';
       audioRef.current = null;
       successSfxRef.current = null;
       failSfxRef.current = null;
+      laughSfxRef.current = null;
+      bompSfxRef.current = null;
+      bompAudioCtxRef.current = null;
+      bompGainRef.current = null;
+      winAudioRef.current = null;
+      victoryMusicStartedRef.current = false;
     };
   }, [clearDuckRestore]);
 
@@ -115,7 +199,12 @@ export function BgmProvider({ children }: { children: ReactNode }) {
     (type: SfxType) => {
       if (!enabled) return;
 
-      const sfx = type === 'success' ? successSfxRef.current : failSfxRef.current;
+      const sfx =
+        type === 'success'
+          ? successSfxRef.current
+          : type === 'fail'
+            ? failSfxRef.current
+            : laughSfxRef.current;
       if (!sfx) return;
 
       clearDuckRestore();
@@ -165,9 +254,107 @@ export function BgmProvider({ children }: { children: ReactNode }) {
     playIntroStingAudio();
   }, [enabled]);
 
+  const beginVictoryMusic = useCallback(() => {
+    if (victoryMusicStartedRef.current) return;
+    victoryMusicStartedRef.current = true;
+    clearDuckRestore();
+
+    const bgm = audioRef.current;
+    const win = winAudioRef.current;
+
+    if (bgm && !loadFailed && !bgm.paused) {
+      fadeBgmVolumeTo(0, BGM_FADE_OUT_MS);
+      window.setTimeout(() => {
+        bgm.pause();
+        if (!enabled || !win) return;
+        win.currentTime = 0;
+        void win.play().catch((e) => console.warn('[audio] win 播放失敗：', e));
+      }, BGM_FADE_OUT_MS);
+    } else if (enabled && win) {
+      win.currentTime = 0;
+      void win.play().catch((e) => console.warn('[audio] win 播放失敗：', e));
+    }
+  }, [enabled, loadFailed, clearDuckRestore, fadeBgmVolumeTo]);
+
+  const stopVictoryMusic = useCallback(() => {
+    const win = winAudioRef.current;
+    if (win) {
+      win.pause();
+      win.currentTime = 0;
+    }
+    victoryMusicStartedRef.current = false;
+  }, []);
+
+  const playRatUnlockBomp = useCallback(() => {
+    if (!enabled) return;
+
+    const bomp = bompSfxRef.current;
+    if (!bomp) return;
+
+    clearDuckRestore();
+
+    const bgm = audioRef.current;
+    const shouldDuck = Boolean(bgm && !loadFailed && !bgm.paused);
+
+    if (shouldDuck && bgm) {
+      bgm.volume = getDuckedBgmVolume(DEFAULT_BGM_VOLUME);
+    }
+
+    const bompCtx = bompAudioCtxRef.current;
+    const bompGain = bompGainRef.current;
+    if (bompGain) bompGain.gain.value = BOMP_GAIN;
+    if (bompCtx && bompCtx.state === 'suspended') {
+      void bompCtx.resume();
+    }
+
+    bomp.currentTime = 0;
+    void bomp.play().catch((error) => {
+      console.warn('[audio] bomp 播放失敗：', error);
+      if (shouldDuck && enabled) restoreBgmVolume();
+    });
+
+    duckRestoreTimerRef.current = window.setTimeout(() => {
+      duckRestoreTimerRef.current = null;
+      if (!enabled) return;
+      if (shouldDuck && bgm && !loadFailed) {
+        fadeBgmVolumeTo(DEFAULT_BGM_VOLUME, BOMP_FADE_RESTORE_MS);
+      } else {
+        restoreBgmVolume();
+      }
+    }, BOMP_DUCK_HOLD_MS);
+  }, [
+    enabled,
+    loadFailed,
+    clearDuckRestore,
+    restoreBgmVolume,
+    fadeBgmVolumeTo,
+  ]);
+
   const value = useMemo(
-    () => ({ enabled, unlocked, loadFailed, unlock, toggle, playSfx, playIntroSting }),
-    [enabled, unlocked, loadFailed, unlock, toggle, playSfx, playIntroSting],
+    () => ({
+      enabled,
+      unlocked,
+      loadFailed,
+      unlock,
+      toggle,
+      playSfx,
+      playIntroSting,
+      playRatUnlockBomp,
+      beginVictoryMusic,
+      stopVictoryMusic,
+    }),
+    [
+      enabled,
+      unlocked,
+      loadFailed,
+      unlock,
+      toggle,
+      playSfx,
+      playIntroSting,
+      playRatUnlockBomp,
+      beginVictoryMusic,
+      stopVictoryMusic,
+    ],
   );
 
   return <BgmContext.Provider value={value}>{children}</BgmContext.Provider>;

@@ -7,12 +7,11 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import Login from './components/Login';
 import GameIntro from './components/GameIntro';
-import Game, { GameResultStats } from './components/Game';
-import Result from './components/Result';
+import Game from './components/Game';
 import { BgmAutoplayUnlock } from './contexts/BgmContext';
 import type { PlayerCharacterId } from './constants/characterAssets';
 
-export type GameState = 'LOGIN' | 'INTRO' | 'PLAYING' | 'RESULT';
+export type GameState = 'LOGIN' | 'INTRO' | 'PLAYING';
 
 export interface UserInfo {
   classId: string;
@@ -27,7 +26,7 @@ export default function App() {
   const [gameState, setGameState] = useState<GameState>('LOGIN');
   const [userInfo, setUserInfo] = useState<UserInfo | null>(null);
   const [selectedCharacter, setSelectedCharacter] = useState<PlayerCharacterId | null>(null);
-  const [resultStats, setResultStats] = useState<GameResultStats | null>(null);
+  const [gameSessionKey, setGameSessionKey] = useState(0);
 
   const handleStartGame = (info: UserInfo, characterId: PlayerCharacterId) => {
     setUserInfo(info);
@@ -39,16 +38,16 @@ export default function App() {
     setGameState('PLAYING');
   };
 
-  const handleGameComplete = (stats: GameResultStats) => {
-    setResultStats(stats);
-    setGameState('RESULT');
+  const handlePlayAgain = () => {
+    setGameSessionKey((k) => k + 1);
+    setGameState('PLAYING');
   };
 
-  const handleRestart = () => {
+  const handleExitHome = () => {
     setGameState('LOGIN');
     setUserInfo(null);
     setSelectedCharacter(null);
-    setResultStats(null);
+    setGameSessionKey((k) => k + 1);
   };
 
   return (
@@ -94,7 +93,7 @@ export default function App() {
 
           {gameState === 'PLAYING' && selectedCharacter && userInfo && (
             <motion.div
-              key="playing"
+              key={`playing-${gameSessionKey}`}
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               className="flex-1 min-h-0 overflow-hidden"
@@ -102,22 +101,9 @@ export default function App() {
               <Game
                 characterId={selectedCharacter}
                 playerName={userInfo.name}
-                onComplete={handleGameComplete}
-              />
-            </motion.div>
-          )}
-
-          {gameState === 'RESULT' && resultStats && userInfo && (
-            <motion.div
-              key="result"
-              initial={{ opacity: 0, scale: 0.8 }}
-              animate={{ opacity: 1, scale: 1 }}
-              className="flex-1"
-            >
-              <Result
                 userInfo={userInfo}
-                stats={resultStats}
-                onRestart={handleRestart}
+                onPlayAgain={handlePlayAgain}
+                onExitHome={handleExitHome}
               />
             </motion.div>
           )}

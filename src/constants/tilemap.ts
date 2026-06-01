@@ -696,7 +696,32 @@ function isValidRatSpawn(
 
   if (!isAdjacentToWall(map, x, y) && !isAdjacentToTrashDeco(x, y, deco)) return false;
 
+  if (!hasAdjacentPlayerStandTile(map, meta, x, y, reserved)) return false;
+
   return true;
+}
+
+/** 老鼠格四周至少有一格可供玩家站立並按空白鍵互動（須用建構中的 map，不可讀全域 TILEMAP） */
+function hasAdjacentPlayerStandTile(
+  map: TileId[][],
+  meta: (BuildingCellMeta | null)[][],
+  x: number,
+  y: number,
+  reserved: Set<string>,
+): boolean {
+  return [[0, -1], [0, 1], [-1, 0], [1, 0]].some(([dx, dy]) => {
+    const nx = x + dx;
+    const ny = y + dy;
+    if (!isInMap(nx, ny)) return false;
+    if (reserved.has(`${nx},${ny}`)) return false;
+    if (meta[ny][nx]) return false;
+    const t = map[ny][nx];
+    if (BLOCKING_TILES.has(t)) return false;
+    if (!WALKABLE_TILES.has(t)) return false;
+    if (t === TileId.Tree || t === TileId.Fountain || t === TileId.FlowerBed) return false;
+    if (BORDER_BARRIER_TILES.has(t)) return false;
+    return true;
+  });
 }
 
 function buildReserved(): Set<string> {

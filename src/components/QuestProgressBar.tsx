@@ -2,7 +2,7 @@ import React from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Award } from 'lucide-react';
 import { TOTAL_QUESTS } from '../constants/gameData';
-import EnemyRat from './EnemyRat';
+import RatSprite from './RatSprite';
 
 interface QuestProgressBarProps {
   completedQuests: number;
@@ -34,11 +34,13 @@ function RatCollectionSlot({
       animate={justCaptured ? { scale: [1, 1.3, 1.05, 1], rotate: [0, -8, 8, 0] } : {}}
       transition={{ duration: 0.55, ease: 'easeOut' }}
     >
-      <EnemyRat
-        color={captured ? '#78716c' : '#a8a29e'}
-        className={`!w-5 !h-5 sm:!w-6 sm:!h-6 pointer-events-none
-          ${captured ? 'drop-shadow-md [&_svg]:animate-none' : '[&_svg]:animate-none'}
-          ${justCaptured ? '[&_svg]:!animate-bounce' : ''}`}
+      <RatSprite
+        variant={captured ? 'normal' : 'muted'}
+        direction="down"
+        animateWalk={false}
+        className={`!w-5 !h-5 sm:!w-6 sm:!h-6 pointer-events-none !ring-0 !animate-none
+          ${captured ? 'drop-shadow-md' : ''}
+          ${justCaptured ? '!animate-bounce' : ''}`}
       />
       {captured && (
         <span

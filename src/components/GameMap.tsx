@@ -9,31 +9,56 @@ import {
   NPCS,
   QUEST_POINTS,
   TREASURE_SPOTS,
+  type QuestPoint,
   computeCameraOffset,
   MAP_DECORATIONS,
   type TargetNPC,
 } from '../constants/gameData';
+import { getRatDefaultFacing } from '../constants/ratAssets';
 import { renderTile } from './map/renderTile';
 import TreasureRadarPing from './map/TreasureRadarPing';
 import MapDecorationLayer from './map/MapDecorationLayer';
 import { EntityGroundShadow } from './map/mapDecorations';
-import EnemyRat from './EnemyRat';
+import RatSprite from './RatSprite';
 import NpcMapSprite from './NpcMapSprite';
+import {
+  isWithinRatInteractionRange,
+  normalizeQuestPoint,
+} from '../constants/gameData';
+import {
+  getRatDisplayFacing,
+  isRatWanderFrozenForPlayer,
+  type RatPositionsMap,
+} from '../constants/ratWander';
 import PlayerMapSprite from './PlayerMapSprite';
-import type { SpriteDirection, PlayerCharacterId } from '../constants/characterAssets';
-import { resolveNpcFacing, formatPlayerNameTag, getPlayerCharacter, truncatePlayerName } from '../constants/characterAssets';
+import {
+  formatPlayerNameTag,
+  getPlayerCharacter,
+  truncatePlayerName,
+  type SpriteDirection,
+  type PlayerCharacterId,
+} from '../constants/characterAssets';
+import type { NpcPositionsMap } from '../constants/npcWander';
 
 interface GameMapProps {
   playerPos: { x: number; y: number };
   characterId: PlayerCharacterId | string;
   playerName: string;
   playerDirection: SpriteDirection;
+  npcPositions: NpcPositionsMap;
   seekingNpc: TargetNPC | null;
   completedQuestIds: ReadonlySet<number>;
+  ratPositions: RatPositionsMap;
   questRatsVisible: boolean;
   ratsBurst: boolean;
   collectedTreasureIds: ReadonlySet<string>;
   radarTarget: { x: number; y: number } | null;
+  /** 玩家相鄰時高亮該任務鼠並顯示空白鍵提示 */
+  highlightQuestId: number | null;
+  /** 對話／答題中鎖定面向與行走動畫 */
+  freezeEntityFacing: boolean;
+  /** 點擊地圖上的任務鼠 */
+  onQuestRatClick?: (quest: QuestPoint) => void;
 }
 
 function TreasureMarker({ variant }: { variant: 'chest' | 'sparkle' }) {
@@ -58,12 +83,17 @@ export default function GameMap({
   characterId,
   playerName,
   playerDirection,
+  npcPositions,
   seekingNpc,
   completedQuestIds,
+  ratPositions,
   questRatsVisible,
   ratsBurst,
   collectedTreasureIds,
   radarTarget,
+  highlightQuestId,
+  freezeEntityFacing,
+  onQuestRatClick,
 }: GameMapProps) {
   const viewportRef = useRef<HTMLDivElement>(null);
   const [viewportSize, setViewportSize] = useState({ width: 896, height: 600 });
@@ -138,22 +168,52 @@ export default function GameMap({
     [visibleRange, collectedTreasureIds],
   );
 
-  const visibleQuestRats = useMemo(
+  const visibleQuestRats = useMemo(() => {
+    if (!questRatsVisible) return [];
+
+    return QUEST_POINTS.filter((p) => !completedQuestIds.has(p.questionId))
+      .map((p) => {
+        const live = ratPositions[p.questionId];
+        if (live) return live;
+        return {
+          questId: p.questionId,
+          x: p.x,
+          y: p.y,
+          spawnX: p.x,
+          spawnY: p.y,
+          stance: getRatDefaultFacing(p.questionId),
+        };
+      })
+      .filter(
+        (rat) =>
+          rat.x >= visibleRange.minX &&
+          rat.x <= visibleRange.maxX &&
+          rat.y >= visibleRange.minY &&
+          rat.y <= visibleRange.maxY,
+      );
+  }, [questRatsVisible, completedQuestIds, ratPositions, visibleRange]);
+
+  const visibleNpcs = useMemo(
     () =>
-      questRatsVisible
-        ? QUEST_POINTS.filter(
-            (p) =>
-              !completedQuestIds.has(p.questionId) &&
-              p.x >= visibleRange.minX &&
-              p.x <= visibleRange.maxX &&
-              p.y >= visibleRange.minY &&
-              p.y <= visibleRange.maxY,
-          )
-        : [],
-    [questRatsVisible, completedQuestIds, visibleRange],
+      NPCS.map((npc) => {
+        const world = npcPositions[npc.id];
+        return {
+          ...npc,
+          x: world.x,
+          y: world.y,
+          direction: world.direction,
+          stance: world.stance,
+        };
+      }).filter(
+        (npc) =>
+          npc.x >= visibleRange.minX &&
+          npc.x <= visibleRange.maxX &&
+          npc.y >= visibleRange.minY &&
+          npc.y <= visibleRange.maxY,
+      ),
+    [npcPositions, visibleRange],
   );
 
-  const npcAt = (x: number, y: number) => NPCS.find((n) => n.x === x && n.y === y);
   const treasureAt = (x: number, y: number) =>
     visibleTreasures.find((t) => t.x === x && t.y === y);
 
@@ -207,34 +267,55 @@ export default function GameMap({
           {radarTarget && <TreasureRadarPing x={radarTarget.x} y={radarTarget.y} />}
 
           <AnimatePresence>
-            {visibleQuestRats.map((quest, index) => {
-              const isBoss = quest.questionId === 10 && completedQuestIds.size >= 9;
+            {visibleQuestRats.map((rat, index) => {
+              const questPoint = normalizeQuestPoint({
+                questionId: rat.questId,
+                x: rat.x,
+                y: rat.y,
+              });
+              const isBoss = rat.questId === 10 && completedQuestIds.size >= 9;
+              const inRange = isWithinRatInteractionRange(playerPos, rat);
+              const frozen = isRatWanderFrozenForPlayer(rat, playerPos);
+              const showInteractHint = highlightQuestId === rat.questId;
+              const showAlert = inRange && !showInteractHint;
+              const ratFacing = getRatDisplayFacing(rat, playerPos);
               return (
               <motion.div
-                key={`quest-rat-${quest.questionId}`}
-                className="absolute pointer-events-none z-[12] flex items-end justify-center"
+                key={`quest-rat-${rat.questId}`}
+                className="absolute z-[12] flex items-end justify-center"
                 style={{
-                  left: quest.x * TILE_SIZE,
-                  top: quest.y * TILE_SIZE,
+                  left: rat.x * TILE_SIZE,
+                  top: rat.y * TILE_SIZE,
                   width: TILE_SIZE,
                   height: TILE_SIZE,
                 }}
-                initial={ratsBurst ? { scale: 0, opacity: 0, y: -20 } : false}
+                initial={ratsBurst ? { scale: 0, opacity: 0 } : false}
                 animate={
                   ratsBurst
-                    ? { scale: [0, 1.35, 0.95, 1], opacity: 1, y: 0 }
-                    : { opacity: 1, y: 0, scale: 1 }
+                    ? { scale: [0, 1.35, 0.95, 1], opacity: 1 }
+                    : undefined
                 }
                 transition={
                   ratsBurst
                     ? { duration: 0.55, delay: index * 0.07, ease: [0.34, 1.56, 0.64, 1] }
-                    : { duration: 0.2 }
+                    : { type: 'spring', stiffness: 420, damping: 34 }
                 }
               >
-                <motion.div
-                  className={`relative mb-1 flex flex-col items-center ${isBoss ? 'scale-150 origin-bottom' : ''}`}
-                  animate={{ y: [0, -4, 0] }}
-                  transition={{ repeat: Infinity, duration: 2, delay: index * 0.07 + 0.5 }}
+                <div
+                  role="button"
+                  tabIndex={0}
+                  className={`relative mb-0.5 flex flex-col items-center cursor-pointer
+                    ${isBoss ? 'scale-110 origin-bottom' : ''}`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onQuestRatClick?.(questPoint);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      onQuestRatClick?.(questPoint);
+                    }
+                  }}
                 >
                   <EntityGroundShadow wide />
                   {isBoss && (
@@ -243,95 +324,113 @@ export default function GameMap({
                       aria-hidden
                     />
                   )}
-                  <span
-                    className="absolute -top-0.5 -right-0.5 z-30 w-3.5 h-3.5 bg-rose-500 rounded-full
-                      text-[9px] text-white font-black flex items-center justify-center
-                      animate-pulse drop-shadow-md border border-rose-300"
-                    aria-label="任務老鼠"
-                  >
-                    !
-                  </span>
-                  <EnemyRat
-                    color={isBoss ? '#991b1b' : '#57534e'}
-                    className={`drop-shadow-xl rounded-full ${
-                      isBoss
-                        ? 'ring-4 ring-red-500/90 shadow-[0_0_16px_rgba(239,68,68,0.75)]'
-                        : 'ring-2 ring-amber-400/70'
-                    }`}
+                  {showInteractHint && (
+                    <motion.div
+                      initial={{ opacity: 0, y: 4 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="absolute -top-7 left-1/2 -translate-x-1/2 z-40 flex flex-col items-center pointer-events-none"
+                    >
+                      <span className="text-base leading-none drop-shadow-lg">💬</span>
+                      <span
+                        className="mt-0.5 px-1.5 py-0.5 rounded-md bg-slate-900/90 border border-amber-400/70
+                          text-[8px] font-black text-amber-100 whitespace-nowrap shadow-md"
+                      >
+                        空白鍵
+                      </span>
+                    </motion.div>
+                  )}
+                  {showAlert && (
+                    <span
+                      className="absolute -top-0.5 -right-0.5 z-30 w-3.5 h-3.5 bg-rose-500 rounded-full
+                        text-[9px] text-white font-black flex items-center justify-center
+                        animate-pulse drop-shadow-md border border-rose-300 pointer-events-none"
+                      aria-label="可互動"
+                    >
+                      !
+                    </span>
+                  )}
+                  <RatSprite
+                    variant={isBoss ? 'boss' : 'normal'}
+                    direction={ratFacing}
+                    animateWalk={!frozen && !freezeEntityFacing}
+                    className={isBoss ? '!w-10 !h-10' : '!w-8 !h-8'}
                   />
-                </motion.div>
+                </div>
               </motion.div>
             );
             })}
           </AnimatePresence>
 
-          {tiles.map(({ x, y }) => {
-            const npc = npcAt(x, y);
-            const isPlayer = playerPos.x === x && playerPos.y === y;
-            const hasHint = npc && seekingNpc === npc.id;
-            const hasTreasure = !!treasureAt(x, y);
-
-            if (!npc && !isPlayer) return null;
-
+          {visibleNpcs.map((npc) => {
+            const hasHint = seekingNpc === npc.id;
+            const nearPlayer =
+              Math.abs(npc.x - playerPos.x) + Math.abs(npc.y - playerPos.y) <= 5;
             return (
-              <div
-                key={`entity-${x}-${y}`}
+              <motion.div
+                key={`npc-${npc.id}`}
+                layout={!freezeEntityFacing}
                 className="absolute flex items-end justify-center pointer-events-none z-[15]"
                 style={{
-                  left: x * TILE_SIZE,
-                  top: y * TILE_SIZE,
+                  left: npc.x * TILE_SIZE,
+                  top: npc.y * TILE_SIZE,
                   width: TILE_SIZE,
                   height: TILE_SIZE,
                 }}
+                transition={{ type: 'spring', stiffness: 380, damping: 32 }}
               >
-                {npc && !isPlayer && (
-                  <div className="relative flex flex-col items-center w-full justify-end pb-0.5">
-                    {hasHint && (
-                      <span className="absolute -top-1 -right-1 z-30 w-4 h-4 bg-rose-500 rounded-full text-[9px] text-white font-black flex items-center justify-center animate-pulse drop-shadow-xl">
-                        !
-                      </span>
-                    )}
-                    <EntityGroundShadow wide />
-                    <div className="relative w-9 h-11 drop-shadow-xl">
-                      <NpcMapSprite
-                        npcId={npc.id}
-                        direction={resolveNpcFacing(npc.x, npc.y, playerPos.x, playerPos.y, npc.id)}
-                        animate={Math.abs(npc.x - playerPos.x) + Math.abs(npc.y - playerPos.y) <= 5}
-                      />
-                    </div>
-                    <span className="text-[7px] font-bold text-white bg-black/60 px-1.5 rounded mt-0.5 shadow-sm whitespace-nowrap">
-                      {npc.name}
+                <div className="relative flex flex-col items-center w-full justify-end pb-0.5">
+                  {hasHint && (
+                    <span className="absolute -top-1 -right-1 z-30 w-4 h-4 bg-rose-500 rounded-full text-[9px] text-white font-black flex items-center justify-center animate-pulse drop-shadow-xl">
+                      !
                     </span>
+                  )}
+                  <EntityGroundShadow wide />
+                  <div className="relative w-9 h-11 drop-shadow-xl">
+                    <NpcMapSprite
+                      npcId={npc.id}
+                      direction={npc.stance}
+                      animate={nearPlayer && !freezeEntityFacing}
+                    />
                   </div>
-                )}
-
-                {isPlayer && (
-                  <motion.div
-                    layout
-                    className="relative flex flex-col items-center w-full justify-end pb-0.5 z-20"
-                    transition={{ type: 'spring', stiffness: 400, damping: 30 }}
-                  >
-                    <EntityGroundShadow wide />
-                    <div className="relative w-10 h-12 drop-shadow-xl">
-                      <PlayerMapSprite
-                        characterId={characterId}
-                        direction={playerDirection}
-                        className="w-full h-full"
-                      />
-                    </div>
-                    <span
-                      className="text-[9px] font-bold text-white bg-slate-800/80 px-1.5 py-0.5 rounded mt-0.5 shadow-md whitespace-nowrap max-w-[88px] truncate leading-tight"
-                      title={playerNameTagFull}
-                    >
-                      {playerNameTag}
-                    </span>
-                  </motion.div>
-                )}
-
-                {hasTreasure && isPlayer && null}
-              </div>
+                  <span className="text-[7px] font-bold text-white bg-black/60 px-1.5 rounded mt-0.5 shadow-sm whitespace-nowrap">
+                    {npc.name}
+                  </span>
+                </div>
+              </motion.div>
             );
           })}
+
+          <div
+            className="absolute flex items-end justify-center pointer-events-none z-[15]"
+            style={{
+              left: playerPos.x * TILE_SIZE,
+              top: playerPos.y * TILE_SIZE,
+              width: TILE_SIZE,
+              height: TILE_SIZE,
+            }}
+          >
+            <motion.div
+              layout={!freezeEntityFacing}
+              className="relative flex flex-col items-center w-full justify-end pb-0.5 z-20"
+              transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+            >
+              <EntityGroundShadow wide />
+              <div className="relative w-10 h-12 drop-shadow-xl">
+                <PlayerMapSprite
+                  characterId={characterId}
+                  direction={playerDirection}
+                  className="w-full h-full"
+                  animate={!freezeEntityFacing}
+                />
+              </div>
+              <span
+                className="text-[9px] font-bold text-white bg-slate-800/80 px-1.5 py-0.5 rounded mt-0.5 shadow-md whitespace-nowrap max-w-[88px] truncate leading-tight"
+                title={playerNameTagFull}
+              >
+                {playerNameTag}
+              </span>
+            </motion.div>
+          </div>
         </motion.div>
 
         <div

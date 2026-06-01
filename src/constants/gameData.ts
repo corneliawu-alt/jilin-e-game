@@ -52,6 +52,12 @@ import {
   getMainGatePosition,
   MAIN_GATE_ROAD_X,
 } from './tilemap';
+import { NPC_SPAWN_POSITIONS, type NpcPositionsMap, type NpcWorldState } from './npcWander';
+import type { RatPositionsMap } from './ratWander';
+
+export type { NpcPositionsMap } from './npcWander';
+export { NPC_SPAWN_POSITIONS } from './npcWander';
+export type { RatPositionsMap, RatWorldState } from './ratWander';
 
 /** 主城門正上方、門內幹道起點（由地圖演算法決定） */
 export const PLAYER_START = getPlayerSpawnPoint();
@@ -168,14 +174,153 @@ export function computeCameraOffset(
   return { x: offsetX, y: offsetY };
 }
 
-export function isNpcCell(x: number, y: number): boolean {
-  return Object.values(NPC_GRID_POSITIONS).some((p) => p.x === x && p.y === y);
+export function isNpcCell(
+  x: number,
+  y: number,
+  npcPositions: NpcPositionsMap = NPC_SPAWN_POSITIONS,
+): boolean {
+  return Object.values(npcPositions).some((p) => p.x === x && p.y === y);
 }
 
-/** 碰撞檢測：NPC、樹木、建築物、邊界屏障皆不可進入 */
-export function isBlockedCell(x: number, y: number): boolean {
+/** NPC 互動：相鄰九宮格（切比雪夫 ≤1），避免遠距誤判搶走空白鍵 */
+export const NPC_INTERACTION_CHEBYSHEV_MAX = 1;
+export const NPC_INTERACTION_MANHATTAN_MAX = 1;
+
+/** 老鼠互動：略放寬，減少「對位太準」才觸發 */
+export const RAT_INTERACTION_CHEBYSHEV_MAX = 2;
+export const RAT_INTERACTION_MANHATTAN_MAX = 2;
+
+/** @deprecated 請改用 isWithinRatInteractionRange / isWithinNpcInteractionRange */
+export const INTERACTION_CHEBYSHEV_MAX = RAT_INTERACTION_CHEBYSHEV_MAX;
+export const INTERACTION_MANHATTAN_MAX = RAT_INTERACTION_MANHATTAN_MAX;
+
+/** 將格座標強制為整數 Number，避免字串比對造成距離錯誤 */
+export function toGridNumber(value: unknown): number {
+  const n = Number(value);
+  return Number.isFinite(n) ? Math.trunc(n) : NaN;
+}
+
+export function normalizeGridPosition(pos: GridPosition): GridPosition {
+  return { x: toGridNumber(pos.x), y: toGridNumber(pos.y) };
+}
+
+export function normalizeQuestPoint(point: QuestPoint): QuestPoint {
+  return {
+    questionId: toGridNumber(point.questionId),
+    x: toGridNumber(point.x),
+    y: toGridNumber(point.y),
+  };
+}
+
+function isWithinGridInteractionRange(
+  from: GridPosition,
+  to: GridPosition,
+  chebMax: number,
+  manMax: number,
+): boolean {
+  const px = toGridNumber(from.x);
+  const py = toGridNumber(from.y);
+  const tx = toGridNumber(to.x);
+  const ty = toGridNumber(to.y);
+  if (![px, py, tx, ty].every(Number.isFinite)) return false;
+
+  const dx = Math.abs(tx - px);
+  const dy = Math.abs(ty - py);
+  if (dx === 0 && dy === 0) return false;
+
+  const cheb = Math.max(dx, dy);
+  const man = dx + dy;
+  return cheb <= chebMax || man <= manMax;
+}
+
+/** NPC：僅相鄰格可對話（九宮格，不含同格） */
+export function isWithinNpcInteractionRange(
+  from: GridPosition,
+  to: GridPosition,
+): boolean {
+  return isWithinGridInteractionRange(
+    from,
+    to,
+    NPC_INTERACTION_CHEBYSHEV_MAX,
+    NPC_INTERACTION_MANHATTAN_MAX,
+  );
+}
+
+/** 老鼠：略放寬的互動範圍 */
+export function isWithinRatInteractionRange(
+  from: GridPosition,
+  to: GridPosition,
+): boolean {
+  return isWithinGridInteractionRange(
+    from,
+    to,
+    RAT_INTERACTION_CHEBYSHEV_MAX,
+    RAT_INTERACTION_MANHATTAN_MAX,
+  );
+}
+
+/** @deprecated 請改用 isWithinRatInteractionRange */
+export function isWithinInteractionRange(
+  from: GridPosition,
+  to: GridPosition,
+): boolean {
+  return isWithinRatInteractionRange(from, to);
+}
+
+/**
+ * 未完成任務鼠的「即時」格座標（以 QUEST_POINTS 為題號來源，合併 ratPositions 漫遊座標）
+ */
+export function getActiveRatQuestPoints(
+  completedIds: ReadonlySet<number>,
+  ratPositions?: RatPositionsMap,
+): QuestPoint[] {
+  return QUEST_POINTS.filter((p) => !completedIds.has(p.questionId)).map((p) => {
+    const questionId = toGridNumber(p.questionId);
+    const live = ratPositions?.[questionId];
+    return {
+      questionId,
+      x: toGridNumber(live?.x ?? p.x),
+      y: toGridNumber(live?.y ?? p.y),
+    };
+  });
+}
+
+/** @deprecated 內部請改用 getActiveRatQuestPoints */
+function getActiveRatGridPositions(
+  completedIds: ReadonlySet<number>,
+  ratPositions?: RatPositionsMap,
+): QuestPoint[] {
+  return getActiveRatQuestPoints(completedIds, ratPositions);
+}
+
+/** 未完成任務的老鼠格視為障礙，禁止玩家踩踏 */
+export function isIncompleteQuestRatCell(
+  x: number,
+  y: number,
+  completedIds: ReadonlySet<number>,
+  ratPositions?: RatPositionsMap,
+): boolean {
+  return getActiveRatGridPositions(completedIds, ratPositions).some(
+    (r) => r.x === x && r.y === y,
+  );
+}
+
+/** 碰撞檢測：樹木、建築物、邊界屏障、未完成任務鼠不可進入（NPC 不擋路，可從身旁穿過） */
+export function isBlockedCell(
+  x: number,
+  y: number,
+  _npcPositions: NpcPositionsMap = NPC_SPAWN_POSITIONS,
+  completedQuestIds?: ReadonlySet<number>,
+  ratPositions?: RatPositionsMap,
+): boolean {
   if (!isInBounds(x, y)) return true;
-  return isNpcCell(x, y) || isBlockedTile(x, y) || isBorderBarrierTile(x, y);
+  if (
+    completedQuestIds &&
+    isIncompleteQuestRatCell(x, y, completedQuestIds, ratPositions)
+  ) {
+    return true;
+  }
+  return isBlockedTile(x, y) || isBorderBarrierTile(x, y);
 }
 
 /** @deprecated 使用 isTreeTile；保留相容 */
@@ -187,18 +332,59 @@ export function isInBounds(x: number, y: number): boolean {
   return x >= 0 && x < GRID_WIDTH && y >= 0 && y < GRID_HEIGHT;
 }
 
-export function canMoveTo(x: number, y: number): boolean {
-  return isInBounds(x, y) && !isBlockedCell(x, y);
+export function canMoveTo(
+  x: number,
+  y: number,
+  npcPositions: NpcPositionsMap = NPC_SPAWN_POSITIONS,
+  completedQuestIds?: ReadonlySet<number>,
+  ratPositions?: RatPositionsMap,
+): boolean {
+  return (
+    isInBounds(x, y) &&
+    !isBlockedCell(x, y, npcPositions, completedQuestIds, ratPositions)
+  );
 }
 
+/** 九宮格內最近的 NPC（多人在範圍內時只取一個） */
+export function getNearbyNpc(
+  playerPos: GridPosition,
+  npcPositions: NpcPositionsMap = NPC_SPAWN_POSITIONS,
+): TargetNPC | null {
+  let bestId: TargetNPC | null = null;
+  let bestCheb = Infinity;
+  let bestMan = Infinity;
+
+  for (const [id, pos] of Object.entries(npcPositions) as [
+    TargetNPC,
+    NpcWorldState,
+  ][]) {
+    if (!isWithinNpcInteractionRange(playerPos, pos)) continue;
+    const cheb = Math.max(
+      Math.abs(pos.x - playerPos.x),
+      Math.abs(pos.y - playerPos.y),
+    );
+    const man =
+      Math.abs(pos.x - playerPos.x) + Math.abs(pos.y - playerPos.y);
+    if (
+      cheb < bestCheb ||
+      (cheb === bestCheb && man < bestMan) ||
+      (cheb === bestCheb && man === bestMan && id < (bestId ?? 'Doctor'))
+    ) {
+      bestCheb = cheb;
+      bestMan = man;
+      bestId = id;
+    }
+  }
+
+  return bestId;
+}
+
+/** @deprecated 請改用 getNearbyNpc（含斜角相鄰） */
 export function getAdjacentNpc(
   playerPos: GridPosition,
+  npcPositions: NpcPositionsMap = NPC_SPAWN_POSITIONS,
 ): TargetNPC | null {
-  const found = (Object.entries(NPC_GRID_POSITIONS) as [TargetNPC, GridPosition][]).find(
-    ([, pos]) =>
-      Math.abs(pos.x - playerPos.x) + Math.abs(pos.y - playerPos.y) === 1,
-  );
-  return found ? found[0] : null;
+  return getNearbyNpc(playerPos, npcPositions);
 }
 
 export type QuestQuestion = {
@@ -402,23 +588,140 @@ export function getQuestPointAt(
   x: number,
   y: number,
   completedIds: ReadonlySet<number>,
+  ratPositions?: RatPositionsMap,
 ): QuestPoint | undefined {
-  return QUEST_POINTS.find(
-    (p) => p.x === x && p.y === y && !completedIds.has(p.questionId),
+  const gx = toGridNumber(x);
+  const gy = toGridNumber(y);
+  const hit = getActiveRatQuestPoints(completedIds, ratPositions).find(
+    (r) => r.x === gx && r.y === gy,
   );
+  return hit ? normalizeQuestPoint(hit) : undefined;
 }
 
-/** 任務鼠格（僅來自 QUEST_POINTS） */
+/**
+ * 空白鍵用：在互動範圍內找「唯一」最近未完成任務鼠
+ * 以 QUEST_POINTS + ratPositions 即時座標為準，確保 questionId 永遠有效
+ */
+export function findNearestInteractableQuest(
+  playerPos: GridPosition,
+  completedIds: ReadonlySet<number>,
+  ratPositions?: RatPositionsMap,
+): QuestPoint | undefined {
+  const player = normalizeGridPosition(playerPos);
+  let best: QuestPoint | undefined;
+  let bestCheb = Infinity;
+  let bestMan = Infinity;
+
+  for (const q of getActiveRatQuestPoints(completedIds, ratPositions)) {
+    const quest = normalizeQuestPoint(q);
+    if (!Number.isFinite(quest.questionId)) continue;
+    if (completedIds.has(quest.questionId)) continue;
+
+    if (!isWithinRatInteractionRange(player, quest)) continue;
+
+    const dx = Math.abs(quest.x - player.x);
+    const dy = Math.abs(quest.y - player.y);
+
+    const cheb = Math.max(dx, dy);
+    const man = dx + dy;
+    if (
+      cheb < bestCheb ||
+      (cheb === bestCheb && man < bestMan) ||
+      (cheb === bestCheb &&
+        man === bestMan &&
+        quest.questionId < (best?.questionId ?? Infinity))
+    ) {
+      bestCheb = cheb;
+      bestMan = man;
+      best = quest;
+    }
+  }
+
+  return best;
+}
+
+/** @deprecated 請改用 findNearestInteractableQuest */
+export function getNearbyQuestPoint(
+  playerPos: GridPosition,
+  completedIds: ReadonlySet<number>,
+  ratPositions?: RatPositionsMap,
+): QuestPoint | undefined {
+  return findNearestInteractableQuest(playerPos, completedIds, ratPositions);
+}
+
+export type ResolvedRatQuest = { point: QuestPoint; question: QuestQuestion };
+
+/** 解析任務鼠＋題庫（點擊／互動前驗證，避免錯題或缺欄位） */
+export function resolveRatQuestTarget(
+  point: QuestPoint,
+  completedIds: ReadonlySet<number>,
+  ratPositions?: RatPositionsMap,
+): ResolvedRatQuest | null {
+  const questId = toGridNumber(point.questionId);
+  if (!Number.isFinite(questId) || completedIds.has(questId)) {
+    return null;
+  }
+
+  const spawn = QUEST_POINTS.find((p) => p.questionId === questId);
+  const live = ratPositions?.[questId];
+  const resolved = normalizeQuestPoint({
+    questionId: questId,
+    x: live?.x ?? spawn?.x ?? point.x,
+    y: live?.y ?? spawn?.y ?? point.y,
+  });
+
+  const question = getQuestionById(questId);
+  if (!isValidQuestQuestion(question)) {
+    return null;
+  }
+
+  return { point: resolved, question };
+}
+
+/** @deprecated 請改用 getNearbyQuestPoint */
+export function getAdjacentQuestPoint(
+  playerPos: GridPosition,
+  completedIds: ReadonlySet<number>,
+  ratPositions?: RatPositionsMap,
+): QuestPoint | undefined {
+  return getNearbyQuestPoint(playerPos, completedIds, ratPositions);
+}
+
+export function isAdjacentToQuestRat(
+  playerPos: GridPosition,
+  completedIds: ReadonlySet<number>,
+  ratPositions?: RatPositionsMap,
+): boolean {
+  return !!getNearbyQuestPoint(playerPos, completedIds, ratPositions);
+}
+
+/** 任務鼠格（含漫遊後座標） */
 export function isRatEncounterCell(
   x: number,
   y: number,
   completedIds: ReadonlySet<number>,
+  ratPositions?: RatPositionsMap,
 ): boolean {
-  return !!getQuestPointAt(x, y, completedIds);
+  return !!getQuestPointAt(x, y, completedIds, ratPositions);
 }
 
 export function getQuestionById(id: number): QuestQuestion | undefined {
-  return QUESTIONS.find((q) => q.id === id);
+  const numericId = Number(id);
+  if (!Number.isFinite(numericId)) return undefined;
+  return QUESTIONS.find((q) => q.id === numericId);
+}
+
+/** 驗證題目資料完整（correctAnswer 可為 0） */
+export function isValidQuestQuestion(
+  question: QuestQuestion | undefined,
+): question is QuestQuestion {
+  if (!question) return false;
+  const { options, correctAnswer } = question;
+  if (!Array.isArray(options) || options.length === 0) return false;
+  if (!Number.isInteger(correctAnswer)) return false;
+  if (correctAnswer < 0 || correctAnswer >= options.length) return false;
+  if (typeof question.question !== 'string' || !question.question.trim()) return false;
+  return true;
 }
 
 export type NpcProfile = {
@@ -554,4 +857,17 @@ export function calculateFinalScore(
   const minutes = elapsedSeconds / 60;
   const timePart = Math.max(0, 10 - minutes * 1.5);
   return Math.round(Math.min(100, accuracyPart + completionPart + timePart));
+}
+
+/** 依防疫總積分與綜合得分授予結局稱號 */
+export function getHonorTitle(preventionScore: number, finalScore: number): string {
+  if (preventionScore >= 100 && finalScore >= 90) return '傳說級防疫大師';
+  if (preventionScore >= 70 || finalScore >= 75) return '金牌衛生稽查員';
+  return '見習衛生稽查員';
+}
+
+export function formatElapsedTime(elapsedSeconds: number): string {
+  const m = Math.floor(elapsedSeconds / 60);
+  const s = elapsedSeconds % 60;
+  return `${m} 分 ${s.toString().padStart(2, '0')} 秒`;
 }

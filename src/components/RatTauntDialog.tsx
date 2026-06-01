@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect } from 'react';
 import { motion } from 'motion/react';
-import EnemyRat from './EnemyRat';
+import RatSprite from './RatSprite';
 import RpgDialogBox from './RpgDialogBox';
 
 interface RatTauntDialogProps {
@@ -37,7 +37,12 @@ export default function RatTauntDialog({ message, onClose }: RatTauntDialogProps
         speakerName="變異老鼠"
         portrait={
           <div className="w-full h-full flex items-center justify-center scale-110">
-            <EnemyRat color="#78716c" className="drop-shadow-lg" />
+            <RatSprite
+              variant="muted"
+              direction="down"
+              animateWalk={false}
+              className="!animate-none drop-shadow-lg scale-110"
+            />
           </div>
         }
         onClick={dismiss}

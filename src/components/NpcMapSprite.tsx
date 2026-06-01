@@ -11,6 +11,8 @@ import {
 interface NpcMapSpriteProps {
   npcId: TargetNPC;
   direction: SpriteDirection;
+  /** 以右向行走圖為底，水平翻轉成向左 */
+  flipHorizontal?: boolean;
   className?: string;
   animate?: boolean;
 }
@@ -19,6 +21,7 @@ interface NpcMapSpriteProps {
 export default function NpcMapSprite({
   npcId,
   direction,
+  flipHorizontal = false,
   className = 'w-full h-full',
   animate = true,
 }: NpcMapSpriteProps) {
@@ -46,7 +49,9 @@ export default function NpcMapSprite({
     <div
       role="img"
       aria-hidden
-      className={`${className} bg-no-repeat drop-shadow-md pointer-events-none`}
+      className={`${className} bg-no-repeat drop-shadow-md pointer-events-none ${
+        flipHorizontal ? '-scale-x-100' : ''
+      }`}
       style={{
         backgroundImage: `url(${src})`,
         backgroundSize: getSpriteSheetBackgroundSize(),

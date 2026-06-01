@@ -13,6 +13,8 @@ interface PlayerMapSpriteProps {
   direction: SpriteDirection;
   className?: string;
   animate?: boolean;
+  /** 由外層 wrapper 做 scaleX 時設 false，避免雙重翻轉 */
+  flipHorizontal?: boolean;
 }
 
 /** 地圖用玩家行走圖（Actor1_1_1 / Actor1_2_1，4×2 方向小圖） */
@@ -21,6 +23,7 @@ export default function PlayerMapSprite({
   direction,
   className = 'w-full h-full',
   animate = true,
+  flipHorizontal = false,
 }: PlayerMapSpriteProps) {
   const [src, setSrc] = useState(() => getPlayerSpritePath(characterId));
   const [frame, setFrame] = useState<0 | 1>(0);
@@ -46,7 +49,9 @@ export default function PlayerMapSprite({
     <div
       role="img"
       aria-label="稽查員"
-      className={`${className} bg-no-repeat drop-shadow-md pointer-events-none`}
+      className={`${className} bg-no-repeat drop-shadow-md pointer-events-none ${
+        flipHorizontal ? '-scale-x-100' : ''
+      }`}
       style={{
         backgroundImage: `url(${src})`,
         backgroundSize: getSpriteSheetBackgroundSize(),
