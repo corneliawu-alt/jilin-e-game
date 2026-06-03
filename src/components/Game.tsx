@@ -5,6 +5,7 @@ import {
   DOLLS,
   TOTAL_QUESTS,
   GAME_KEYBOARD_HINT,
+  CATCH_RAT_KEYS_LABEL,
   QUEST_FIRST_WRONG_HINT,
   formatQuestSecondWrongMessage,
   QUEST_POINTS,
@@ -717,7 +718,7 @@ export default function Game({
       const livePoint = resolved?.point ?? quest;
 
       if (!isWithinRatInteractionRange(playerPos, livePoint)) {
-        showInteractionToast('太遠了，請靠近一點再按 Enter 鍵！');
+        showInteractionToast(`太遠了，請靠近一點再按 ${CATCH_RAT_KEYS_LABEL}！`);
         return;
       }
 
@@ -989,19 +990,19 @@ export default function Game({
   const contextHint =
     needsNpcLearning
       ? adjacentQuestPoint
-        ? `按 Enter 鍵，老鼠會嘲諷你！請先用空白鍵找 3 位專家學習（${npcProgress}/3）`
+        ? `按 ${CATCH_RAT_KEYS_LABEL}，老鼠會嘲諷你！請先用空白鍵找 3 位專家學習（${npcProgress}/3）`
         : `請靠近專家後按空白鍵對話（${npcProgress}/3）`
       : isCertified && !certModalDismissed
         ? '知識裝備完成！請按空白鍵關閉證書視窗，出發抓老鼠！'
         : isCertified && !ratsVisible
           ? '變異老鼠正在出沒…'
           : seekingNpc
-            ? `答錯了！請用空白鍵向【${NPCS.find((n) => n.id === seekingNpc)?.name ?? '專家'}】取得線索，再按 Enter 抓鼠！`
+            ? `答錯了！請用空白鍵向【${NPCS.find((n) => n.id === seekingNpc)?.name ?? '專家'}】取得線索，再按 ${CATCH_RAT_KEYS_LABEL} 抓鼠！`
             : adjacentQuestPoint
-              ? `捕鼠網已就位！按 Enter 抓住任務鼠（第 ${adjacentQuestPoint.questionId} 題／剩 ${remainingQuests} 隻）`
+              ? `捕鼠網已就位！按 ${CATCH_RAT_KEYS_LABEL} 抓住任務鼠（第 ${adjacentQuestPoint.questionId} 題／剩 ${remainingQuests} 隻）`
               : adjacentNpcName
                 ? `空白鍵與【${adjacentNpcName}】對話（九宮格內）`
-                : `靠近老鼠出現捕鼠網後按 Enter 抓鼠（剩餘 ${remainingQuests} 隻）`;
+                : `靠近老鼠出現捕鼠網後按 ${CATCH_RAT_KEYS_LABEL} 抓鼠（剩餘 ${remainingQuests} 隻）`;
 
   return (
     <div className="relative w-full h-full overflow-hidden font-sans bg-slate-900 flex flex-col min-h-0">

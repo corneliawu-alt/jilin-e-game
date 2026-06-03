@@ -54,7 +54,7 @@ interface GameMapProps {
   ratsBurst: boolean;
   collectedTreasureIds: ReadonlySet<string>;
   radarTarget: { x: number; y: number } | null;
-  /** 互動範圍內高亮任務鼠並顯示 Enter 抓鼠提示 */
+  /** 互動範圍內高亮任務鼠並顯示 Enter/Z 抓鼠提示 */
   highlightQuestId: number | null;
   /** 對話／答題中鎖定面向與行走動畫 */
   freezeEntityFacing: boolean;
@@ -318,7 +318,7 @@ export default function GameMap({
                     onQuestRatClick?.(questPoint);
                   }}
                   onKeyDown={(e) => {
-                    if (e.key === 'Enter' || e.key === ' ') {
+                    if (e.key === 'Enter' || e.key.toLowerCase() === 'z') {
                       e.preventDefault();
                       onQuestRatClick?.(questPoint);
                     }

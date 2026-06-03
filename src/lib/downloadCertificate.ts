@@ -1,7 +1,7 @@
 import html2canvas from 'html2canvas';
 
 export const CERTIFICATE_NODE_ID = 'certificate-node';
-export const CERTIFICATE_DOWNLOAD_FILENAME = '料理鼠亡_榮譽獎狀.jpg';
+export const CERTIFICATE_DOWNLOAD_FILENAME_FALLBACK = '料理鼠亡_榮譽獎狀.jpg';
 
 export type CertificateDownloadResult =
   | { ok: true; method: 'save-picker' | 'download' | 'preview' }
@@ -11,16 +11,39 @@ type SaveTarget =
   | { kind: 'fs'; handle: FileSystemFileHandle }
   | { kind: 'anchor'; link: HTMLAnchorElement };
 
+function sanitizeFilenamePart(value: string): string {
+  return value
+    .trim()
+    .replace(/[\\/:*?"<>|\s]/g, '')
+    .slice(0, 32);
+}
+
+/** 下載檔名：料理鼠亡_班級+座號（座號不足 2 碼前補 0，例：501 班、6 號 → 料理鼠亡_50106.jpg） */
+export function buildCertificateFilename(
+  classId: string,
+  seatNumber: string,
+): string {
+  const cls = sanitizeFilenamePart(classId);
+  const seatRaw = sanitizeFilenamePart(seatNumber);
+  if (!cls || !seatRaw) return CERTIFICATE_DOWNLOAD_FILENAME_FALLBACK;
+
+  const seat = /^\d+$/.test(seatRaw)
+    ? seatRaw.padStart(2, '0')
+    : seatRaw;
+
+  return `料理鼠亡_${cls}${seat}.jpg`;
+}
+
 function supportsSaveFilePicker(): boolean {
   return typeof window.showSaveFilePicker === 'function';
 }
 
 /** 在使用者點擊後立刻請求存檔路徑，避免非同步截圖後下載被瀏覽器阻擋 */
-async function pickSaveTarget(): Promise<SaveTarget | 'cancelled'> {
+async function pickSaveTarget(filename: string): Promise<SaveTarget | 'cancelled'> {
   if (supportsSaveFilePicker()) {
     try {
       const handle = await window.showSaveFilePicker({
-        suggestedName: CERTIFICATE_DOWNLOAD_FILENAME,
+        suggestedName: filename,
         types: [
           {
             description: 'JPEG 圖片',
@@ -73,10 +96,14 @@ function canvasToJpegBlob(canvas: HTMLCanvasElement): Promise<Blob | null> {
   });
 }
 
-function tryAnchorDownload(link: HTMLAnchorElement, blob: Blob): boolean {
+function tryAnchorDownload(
+  link: HTMLAnchorElement,
+  blob: Blob,
+  filename: string,
+): boolean {
   const url = URL.createObjectURL(blob);
   link.href = url;
-  link.download = CERTIFICATE_DOWNLOAD_FILENAME;
+  link.download = filename;
   link.rel = 'noopener';
 
   try {
@@ -104,6 +131,7 @@ function openBlobPreview(blob: Blob): void {
 async function writeBlobToTarget(
   target: SaveTarget,
   blob: Blob,
+  filename: string,
 ): Promise<CertificateDownloadResult> {
   if (target.kind === 'fs') {
     const writable = await target.handle.createWritable();
@@ -112,7 +140,7 @@ async function writeBlobToTarget(
     return { ok: true, method: 'save-picker' };
   }
 
-  if (tryAnchorDownload(target.link, blob)) {
+  if (tryAnchorDownload(target.link, blob, filename)) {
     return { ok: true, method: 'download' };
   }
 
@@ -121,13 +149,17 @@ async function writeBlobToTarget(
 }
 
 /** 將獎狀區塊匯出為 JPG 並觸發瀏覽器下載 */
-export async function downloadCertificateAsJpg(): Promise<CertificateDownloadResult> {
+export async function downloadCertificateAsJpg(
+  classId: string,
+  seatNumber: string,
+): Promise<CertificateDownloadResult> {
   const node = document.getElementById(CERTIFICATE_NODE_ID);
   if (!node) {
     return { ok: false, error: '找不到獎狀內容，請重新整理後再試。' };
   }
 
-  const saveTarget = await pickSaveTarget();
+  const filename = buildCertificateFilename(classId, seatNumber);
+  const saveTarget = await pickSaveTarget(filename);
   if (saveTarget === 'cancelled') {
     return { ok: false, error: '已取消下載。' };
   }
@@ -159,7 +191,7 @@ export async function downloadCertificateAsJpg(): Promise<CertificateDownloadRes
       return { ok: false, error: '無法產生圖片檔案。' };
     }
 
-    return await writeBlobToTarget(saveTarget, blob);
+    return await writeBlobToTarget(saveTarget, blob, filename);
   } catch (error) {
     if (saveTarget.kind === 'anchor') saveTarget.link.remove();
     console.error('[Certificate] 下載失敗：', error);

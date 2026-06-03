@@ -118,4 +118,4 @@ LOGIN → INTRO → PLAYING
 
 ## 12. 操作提示（常駐）
 
-`GAME_KEYBOARD_HINT`：**WASD移動 • 空白鍵:對話 • Enter鍵:抓老鼠**（Z 鍵同 Enter）
+`GAME_KEYBOARD_HINT`：**WASD移動 • 空白鍵:對話 • Enter鍵或Z鍵:抓老鼠**

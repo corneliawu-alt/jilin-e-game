@@ -21,5 +21,5 @@ export function getNpcDepartureMessage(
     }
   }
 
-  return '你已經準備好了！小鎮角落還有老鼠在作怪，快按 Enter 鍵用捕鼠網抓住牠們吧！';
+  return '你已經準備好了！小鎮角落還有老鼠在作怪，快按 Enter 或 Z 鍵用捕鼠網抓住牠們吧！';
 }

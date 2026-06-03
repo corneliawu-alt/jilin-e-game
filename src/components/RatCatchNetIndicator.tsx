@@ -70,7 +70,7 @@ export default function RatCatchNetIndicator({
             whitespace-nowrap shadow-md
             border-amber-400/80 text-amber-100"
         >
-          Enter
+          Enter/Z
         </span>
       )}
     </div>

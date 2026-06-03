@@ -48,7 +48,10 @@ export default function HonorCertificate({
     setDownloading(true);
     setDownloadMessage(null);
     try {
-      const result = await downloadCertificateAsJpg();
+      const result = await downloadCertificateAsJpg(
+        userInfo.classId,
+        userInfo.seatNumber,
+      );
       if (!result.ok) {
         setDownloadMessage(result.error);
         return;
@@ -67,7 +70,7 @@ export default function HonorCertificate({
     } finally {
       setDownloading(false);
     }
-  }, [downloading]);
+  }, [downloading, userInfo.classId, userInfo.seatNumber]);
 
   return (
     <motion.div

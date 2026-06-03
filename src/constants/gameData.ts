@@ -10,7 +10,10 @@ export const PLAYER_ROLE = '特級衛生稽查員';
 export const TOTAL_QUESTS = 10;
 
 /** 地圖底部固定操作說明（純鍵盤） */
-export const GAME_KEYBOARD_HINT = 'WASD移動 • 空白鍵:對話 • Enter鍵:抓老鼠';
+/** 抓鼠專用鍵（與空白鍵 NPC 對話分流） */
+export const CATCH_RAT_KEYS_LABEL = 'Enter鍵或Z鍵';
+
+export const GAME_KEYBOARD_HINT = `WASD移動 • 空白鍵:對話 • ${CATCH_RAT_KEYS_LABEL}:抓老鼠`;
 
 /** 任務答題：第一次答錯時的統一提示（不關閉對話框） */
 export const QUEST_FIRST_WRONG_HINT = '哎呀，好像不對喔！再給你一次機會！';
