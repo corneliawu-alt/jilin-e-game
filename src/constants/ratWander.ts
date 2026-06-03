@@ -1,13 +1,53 @@
 import type { SpriteDirection } from './characterAssets';
 import type { GridPosition, QuestPoint } from './gameData';
 import { isWithinRatInteractionRange } from './gameData';
-import { getRatDefaultFacing, resolveRatFacingTowardPlayer } from './ratAssets';
-import { GRID_WIDTH, GRID_HEIGHT } from './mapConfig';
+import {
+  getRatDefaultFacing,
+  resolveRatFacingTowardPlayer,
+  rollRandomRatType,
+  type RatType,
+} from './ratAssets';
+import { GRID_WIDTH, GRID_HEIGHT, NPC_GRID_POSITIONS } from './mapConfig';
 import { isBorderBarrierTile, isBlockedTile } from './tilemap';
 import type { NpcPositionsMap } from './npcWander';
 
 function isNpcAt(x: number, y: number, npcPositions: NpcPositionsMap): boolean {
   return Object.values(npcPositions).some((p) => p.x === x && p.y === y);
+}
+
+function isNpcAnchorCell(x: number, y: number): boolean {
+  return Object.values(NPC_GRID_POSITIONS).some((p) => p.x === x && p.y === y);
+}
+
+/** 尋找距原點最近、非 NPC 站位且可通行的替代格（任務鼠初始位置校正） */
+function findAlternateRatSpawn(
+  originX: number,
+  originY: number,
+  questPoints: readonly QuestPoint[],
+  questId: number,
+): GridPosition | null {
+  const maxRadius = 4;
+  for (let r = 1; r <= maxRadius; r++) {
+    for (let dy = -r; dy <= r; dy++) {
+      for (let dx = -r; dx <= r; dx++) {
+        if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
+        const x = originX + dx;
+        const y = originY + dy;
+        if (!isInBounds(x, y)) continue;
+        if (isNpcAnchorCell(x, y)) continue;
+        if (isBlockedTile(x, y) || isBorderBarrierTile(x, y)) continue;
+        if (
+          questPoints.some(
+            (q) => q.questionId !== questId && q.x === x && q.y === y,
+          )
+        ) {
+          continue;
+        }
+        return { x, y };
+      }
+    }
+  }
+  return null;
 }
 
 export type RatWorldState = {
@@ -17,6 +57,7 @@ export type RatWorldState = {
   spawnX: number;
   spawnY: number;
   stance: SpriteDirection;
+  ratType: RatType;
 };
 
 export type RatPositionsMap = Record<number, RatWorldState>;
@@ -32,13 +73,23 @@ function isInBounds(x: number, y: number): boolean {
 export function buildInitialRatPositions(questPoints: readonly QuestPoint[]): RatPositionsMap {
   const map: RatPositionsMap = {};
   for (const p of questPoints) {
+    let x = p.x;
+    let y = p.y;
+    if (isNpcAnchorCell(x, y)) {
+      const alt = findAlternateRatSpawn(x, y, questPoints, p.questionId);
+      if (alt) {
+        x = alt.x;
+        y = alt.y;
+      }
+    }
     map[p.questionId] = {
       questId: p.questionId,
-      x: p.x,
-      y: p.y,
-      spawnX: p.x,
-      spawnY: p.y,
+      x,
+      y,
+      spawnX: x,
+      spawnY: y,
       stance: getRatDefaultFacing(p.questionId),
+      ratType: p.ratType ?? rollRandomRatType(),
     };
   }
   return map;
@@ -102,7 +153,7 @@ export function canRatStepTo(
   if (!isWithinRatWanderRadius({ x, y }, spawn)) return false;
   if (playerPos.x === x && playerPos.y === y) return false;
   if (isRatCellOccupied(x, y, ratPositions, rat.questId, completedIds)) return false;
-  if (isNpcAt(x, y, npcPositions)) return false;
+  if (isNpcAt(x, y, npcPositions) || isNpcAnchorCell(x, y)) return false;
   if (isBlockedTile(x, y) || isBorderBarrierTile(x, y)) return false;
   return true;
 }

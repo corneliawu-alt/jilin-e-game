@@ -4,6 +4,9 @@ import {
   NPCS,
   DOLLS,
   TOTAL_QUESTS,
+  GAME_KEYBOARD_HINT,
+  QUEST_FIRST_WRONG_HINT,
+  formatQuestSecondWrongMessage,
   QUEST_POINTS,
   QUESTIONS,
   TargetNPC,
@@ -47,11 +50,16 @@ import {
   cloneNpcPositions,
   computeNpcWanderTick,
   nudgeNpcsOffCell,
+  nudgeNpcsOffRatCells,
   applyDialogueFacing,
   NPC_SPAWN_POSITIONS,
   pickNpcWanderIntervalMs,
   type NpcPositionsMap,
 } from '../constants/npcWander';
+import {
+  getNpcDepartureMessage,
+  type NpcDialogMode,
+} from '../lib/npcFollowUpDialogue';
 import {
   buildInitialRatPositions,
   computeRatWanderTick,
@@ -76,6 +84,7 @@ import { useBgm } from '../contexts/BgmContext';
 import type { UserInfo } from '../App';
 import VictoryCutscene from './VictoryCutscene';
 import HonorCertificate from './HonorCertificate';
+import { submitGameScore, type GameScoreSubmitResult } from '../lib/submitGameScore';
 
 const REQUIRED_NPCS: TargetNPC[] = REQUIRED_LEARNING_NPCS;
 
@@ -124,12 +133,13 @@ export default function Game({
   const [activeNpc, setActiveNpc] = useState<(typeof NPCS)[0] | null>(null);
   const [npcLineIndex, setNpcLineIndex] = useState(0);
   const [npcClueMode, setNpcClueMode] = useState(false);
+  const [npcDialogMode, setNpcDialogMode] = useState<NpcDialogMode>('intro');
+  const [npcFarewellMessage, setNpcFarewellMessage] = useState('');
   const [firstTryCorrect, setFirstTryCorrect] = useState(0);
   const [totalAttempts, setTotalAttempts] = useState(0);
   const [questAttempted, setQuestAttempted] = useState(false);
-  const [failedAttempts, setFailedAttempts] = useState<Record<number, number>>({});
-  const [lockedQuestId, setLockedQuestId] = useState<number | null>(null);
-  const [showQuestLockDialog, setShowQuestLockDialog] = useState(false);
+  /** 當前開啟的任務對話框內已答錯次數（關閉後下次觸發同一鼠會在 openQuestQuiz 重置） */
+  const questWrongCountRef = useRef(0);
   const [questSystemDialog, setQuestSystemDialog] = useState<{
     title: string;
     text: string;
@@ -168,8 +178,21 @@ export default function Game({
   const [endgamePhase, setEndgamePhase] = useState<EndgamePhase>(null);
   const [endgameStats, setEndgameStats] = useState<GameResultStats | null>(null);
   const endgameTriggeredRef = useRef(false);
+  const endgameScoreSubmittedRef = useRef(false);
+  const questDialogOpenRef = useRef(false);
+  const [scoreSubmitState, setScoreSubmitState] = useState<{
+    loading: boolean;
+    result: GameScoreSubmitResult | null;
+  }>({ loading: false, result: null });
 
-  const { playRatUnlockBomp, playSfx, beginVictoryMusic, stopVictoryMusic } = useBgm();
+  const {
+    playRatUnlockBomp,
+    playSfx,
+    beginVictoryMusic,
+    stopVictoryMusic,
+    onQuestDialogOpened,
+    onQuestDialogClosed,
+  } = useBgm();
 
   const npcWanderPaused = !!activeNpc || showQuiz || endgamePhase !== null;
   const needsNpcLearning = talkedToNPCs.size < REQUIRED_NPCS.length;
@@ -186,7 +209,6 @@ export default function Game({
     !!activeNpc ||
     showTreasureDialog ||
     showRatTauntDialog ||
-    showQuestLockDialog ||
     !!bossGateMode ||
     (showCertificationModal && !certModalDismissed) ||
     endgamePhase !== null;
@@ -212,6 +234,13 @@ export default function Game({
     if (Object.keys(ratPositions).length >= QUEST_POINTS.length) return;
     setRatPositions(buildInitialRatPositions(QUEST_POINTS));
   }, [ratPositions]);
+
+  /** 讀檔／初始化後：NPC 不可與任務鼠同格 */
+  useEffect(() => {
+    setNpcPositions((prev) =>
+      nudgeNpcsOffRatCells(prev, playerPos, ratPositions, completedQuestIds),
+    );
+  }, [ratPositions, playerPos, completedQuestIds]);
 
   useEffect(() => {
     if (endgamePhase !== null) return;
@@ -248,6 +277,17 @@ export default function Game({
     beginVictoryMusic,
   ]);
 
+  /** 任務答題框開關：僅 battle BGM；關閉後恢復小鎮 BGM（bomp 僅 NPC 解鎖時） */
+  useEffect(() => {
+    const questDialogOpen = showQuiz && activeQuestion !== null;
+    if (questDialogOpen && !questDialogOpenRef.current) {
+      onQuestDialogOpened();
+    } else if (!questDialogOpen && questDialogOpenRef.current) {
+      onQuestDialogClosed();
+    }
+    questDialogOpenRef.current = questDialogOpen;
+  }, [showQuiz, activeQuestion, onQuestDialogOpened, onQuestDialogClosed]);
+
   useEffect(() => {
     if (isCertified && !certModalDismissed) {
       setShowCertificationModal(true);
@@ -268,7 +308,20 @@ export default function Game({
     const schedule = () => {
       timeoutId = window.setTimeout(() => {
         if (cancelled) return;
-        setNpcPositions((prev) => computeNpcWanderTick(prev, playerPos));
+        setNpcPositions((prev) => {
+          const wandered = computeNpcWanderTick(
+            prev,
+            playerPos,
+            ratPositions,
+            completedQuestIds,
+          );
+          return nudgeNpcsOffRatCells(
+            wandered,
+            playerPos,
+            ratPositions,
+            completedQuestIds,
+          );
+        });
         schedule();
       }, pickNpcWanderIntervalMs());
     };
@@ -278,7 +331,7 @@ export default function Game({
       cancelled = true;
       window.clearTimeout(timeoutId);
     };
-  }, [npcWanderPaused, playerPos]);
+  }, [npcWanderPaused, playerPos, ratPositions, completedQuestIds]);
 
   /** 任務鼠微步漫遊（出生點半徑 1 格）；玩家靠近或 UI 開啟時暫停 */
   useEffect(() => {
@@ -311,7 +364,6 @@ export default function Game({
       activeNpc ||
       showTreasureDialog ||
       showRatTauntDialog ||
-      showQuestLockDialog ||
       endgamePhase !== null ||
       bossGateMode ||
       (showCertificationModal && !certModalDismissed)
@@ -339,7 +391,6 @@ export default function Game({
     activeNpc,
     showTreasureDialog,
     showRatTauntDialog,
-    showQuestLockDialog,
     endgamePhase,
     bossGateMode,
     showCertificationModal,
@@ -363,7 +414,14 @@ export default function Game({
 
         const nextPos = { x: newX, y: newY };
         setNpcPositions((npcPos) =>
-          nudgeNpcsOffCell(npcPos, newX, newY, nextPos),
+          nudgeNpcsOffCell(
+            npcPos,
+            newX,
+            newY,
+            nextPos,
+            ratPositions,
+            completedQuestIds,
+          ),
         );
         return nextPos;
       });
@@ -434,10 +492,31 @@ export default function Game({
     setNpcPositions(facedPositions);
     setPlayerDirection(playerFacing);
 
+    const isClue = seekingNpc === nearbyId;
     setActiveNpc(nearby);
     setNpcLineIndex(0);
-    setNpcClueMode(seekingNpc === nearbyId);
-  }, [showQuiz, activeNpc, playerPos, seekingNpc, npcPositions]);
+    setNpcClueMode(isClue);
+    setNpcFarewellMessage('');
+
+    if (isClue) {
+      setNpcDialogMode('review');
+    } else if (talkedToNPCs.has(nearbyId)) {
+      setNpcDialogMode('menu');
+    } else {
+      setNpcDialogMode('intro');
+    }
+  }, [showQuiz, activeNpc, playerPos, seekingNpc, npcPositions, talkedToNPCs]);
+
+  const handleNpcChooseReview = useCallback(() => {
+    setNpcDialogMode('review');
+    setNpcLineIndex(0);
+  }, []);
+
+  const handleNpcChooseLeave = useCallback(() => {
+    if (!activeNpc) return;
+    setNpcFarewellMessage(getNpcDepartureMessage(activeNpc.id, talkedToNPCs));
+    setNpcDialogMode('farewell');
+  }, [activeNpc, talkedToNPCs]);
 
   const openQuestQuiz = useCallback((question: QuestQuestion) => {
     if (!isValidQuestQuestion(question)) {
@@ -455,6 +534,7 @@ export default function Game({
     setActiveQuestion(question);
     setActiveQuestionId(question.id);
     setQuestAttempted(false);
+    questWrongCountRef.current = 0;
     setShowQuiz(true);
     return true;
   }, [showQuestSystemMessage]);
@@ -501,16 +581,6 @@ export default function Game({
 
       ensureCombatReady();
 
-      if (lockedQuestId === point.questionId) {
-        const uncapturedCount = QUEST_POINTS.filter(
-          (p) => !completedQuestIds.has(p.questionId),
-        ).length;
-        if (uncapturedCount > 1) {
-          setShowQuestLockDialog(true);
-          return;
-        }
-      }
-
       const isBossQuest =
         point.questionId === 10 && completedQuestIds.size >= 9;
       if (isBossQuest) {
@@ -541,7 +611,6 @@ export default function Game({
       showLearningRatTaunt,
       showQuestSystemMessage,
       ensureCombatReady,
-      lockedQuestId,
       completedQuestIds,
       inventory,
       collectedTreasureIds,
@@ -549,9 +618,7 @@ export default function Game({
     ],
   );
 
-  /**
-   * 空白鍵：先 resolve 單一目標，再進入任務流程
-   */
+  /** Enter／Z：在互動範圍內抓鼠（含學習期嘲諷防呆） */
   const beginRatQuest = useCallback(
     (targetPoint: QuestPoint) => {
       const normalized = normalizeQuestPoint(targetPoint);
@@ -575,8 +642,29 @@ export default function Game({
     ],
   );
 
-  /** 空白鍵：學習期 NPC 優先；實戰期（已完 3 位 NPC）老鼠優先 */
-  const handleInteract = useCallback(() => {
+  /** 空白鍵：僅觸發九宮格內 NPC 對話，完全忽略老鼠 */
+  const handleNpcInteract = useCallback(() => {
+    if (showQuiz || activeNpc || endgamePhase) return;
+
+    const nearbyNpc = getNearbyNpc(playerPos, npcPositions);
+    if (!nearbyNpc) {
+      logRatQuest('handleNpcInteract：九宮格內無 NPC');
+      return;
+    }
+
+    logRatQuest('handleNpcInteract → NPC', nearbyNpc);
+    interactWithNpc();
+  }, [
+    showQuiz,
+    activeNpc,
+    endgamePhase,
+    playerPos,
+    npcPositions,
+    interactWithNpc,
+  ]);
+
+  /** Enter／Z：揮網抓鼠；學習期未完成 NPC 時改為老鼠嘲諷 */
+  const handleCatchRat = useCallback(() => {
     if (showQuiz || activeNpc || endgamePhase) return;
 
     const targetQuest = findNearestInteractableQuest(
@@ -584,65 +672,40 @@ export default function Game({
       completedQuestIds,
       ratPositions,
     );
-    const nearbyNpc = getNearbyNpc(playerPos, npcPositions);
 
-    if (isCertified) {
-      if (targetQuest) {
-        logRatQuest('handleInteract → 單一老鼠（實戰優先）', targetQuest);
-        beginRatQuest(targetQuest);
-        return;
-      }
-      if (nearbyNpc) {
-        logRatQuest('handleInteract → NPC（實戰、僅相鄰）', nearbyNpc);
-        interactWithNpc();
-        return;
-      }
-    } else {
-      if (nearbyNpc) {
-        logRatQuest('handleInteract → NPC（學習期優先）', nearbyNpc);
-        interactWithNpc();
-        return;
-      }
-      if (targetQuest) {
-        logRatQuest('handleInteract → 單一老鼠（學習期）', targetQuest);
-        beginRatQuest(targetQuest);
-        return;
-      }
+    if (!targetQuest) {
+      showInteractionToast('附近沒有可抓的變異老鼠，請再靠近一點！');
+      logRatQuest('handleCatchRat：互動範圍內無老鼠');
+      return;
     }
 
-    logRatQuest('handleInteract：範圍內無 NPC 或老鼠');
+    logRatQuest('handleCatchRat → 任務鼠', targetQuest);
+    beginRatQuest(targetQuest);
   }, [
     showQuiz,
     activeNpc,
     endgamePhase,
     playerPos,
-    npcPositions,
     completedQuestIds,
     ratPositions,
-    isCertified,
-    interactWithNpc,
     beginRatQuest,
+    showInteractionToast,
   ]);
 
-  /** 滑鼠點擊：直接帶入被點老鼠的 quest，不再從陣列 find */
+  /** 滑鼠點擊老鼠：與 Enter 相同（鍵盤為主，點擊為輔） */
   const handleRatClick = useCallback(
     (clickedQuest: QuestPoint) => {
       const quest = normalizeQuestPoint(clickedQuest);
-      logRatQuest('handleRatClick', { quest, playerPos });
+      logRatQuest('handleRatClick → 轉交 handleCatchRat 流程', { quest, playerPos });
 
       if (showCertificationModal && !certModalDismissed) {
         showQuestSystemMessage(
-          '請先關閉「知識裝備完成」畫面（按空白鍵），再點擊老鼠！',
+          '請先關閉「知識裝備完成」畫面（按空白鍵），再抓老鼠！',
         );
         return;
       }
 
-      if (
-        uiBlocked &&
-        !showRatTauntDialog &&
-        !showQuestLockDialog &&
-        !bossGateMode
-      ) {
+      if (uiBlocked && !showRatTauntDialog && !bossGateMode) {
         return;
       }
 
@@ -654,7 +717,7 @@ export default function Game({
       const livePoint = resolved?.point ?? quest;
 
       if (!isWithinRatInteractionRange(playerPos, livePoint)) {
-        showInteractionToast('太遠了，請靠近一點！');
+        showInteractionToast('太遠了，請靠近一點再按 Enter 鍵！');
         return;
       }
 
@@ -676,7 +739,6 @@ export default function Game({
       showCertificationModal,
       certModalDismissed,
       showRatTauntDialog,
-      showQuestLockDialog,
       bossGateMode,
       showQuestSystemMessage,
     ],
@@ -697,6 +759,7 @@ export default function Game({
 
   const dismissBossGateReady = useCallback(() => {
     setBossGateMode(null);
+    questWrongCountRef.current = 0;
     setShowQuiz(true);
   }, []);
 
@@ -760,14 +823,6 @@ export default function Game({
         return;
       }
 
-      if (showQuestLockDialog) {
-        if (e.key === ' ' || e.key === 'Enter') {
-          e.preventDefault();
-          setShowQuestLockDialog(false);
-        }
-        return;
-      }
-
       if (showRatTauntDialog || bossGateMode) return;
 
       if (showQuiz || activeNpc) return;
@@ -775,9 +830,19 @@ export default function Game({
       const key = e.key.toLowerCase();
 
       if (
-        ['arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'w', 'a', 's', 'd', ' '].includes(
-          key,
-        )
+        [
+          'arrowup',
+          'arrowdown',
+          'arrowleft',
+          'arrowright',
+          'w',
+          'a',
+          's',
+          'd',
+          ' ',
+          'enter',
+          'z',
+        ].includes(key)
       ) {
         e.preventDefault();
       }
@@ -800,7 +865,11 @@ export default function Game({
           movePlayer(1, 0);
           break;
         case ' ':
-          handleInteract();
+          handleNpcInteract();
+          break;
+        case 'enter':
+        case 'z':
+          handleCatchRat();
           break;
       }
     };
@@ -809,7 +878,8 @@ export default function Game({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [
     movePlayer,
-    handleInteract,
+    handleNpcInteract,
+    handleCatchRat,
     playerPos,
     npcPositions,
     showQuiz,
@@ -820,7 +890,6 @@ export default function Game({
     dismissCertificationModal,
     dismissTreasureDialog,
     showRatTauntDialog,
-    showQuestLockDialog,
     bossGateMode,
     dismissBossGateReady,
     dismissBossGateBlocked,
@@ -835,41 +904,40 @@ export default function Game({
   const handleQuestAnswer = useCallback(
     (selectedIndex: number): QuestAnswerOutcome => {
       if (!activeQuestion) {
-        return { kind: 'retry', message: '答錯了！請再想一想，再試一次！' };
+        return { kind: 'retry', message: QUEST_FIRST_WRONG_HINT };
       }
 
-      const questId = activeQuestion.id;
       setTotalAttempts((a) => a + 1);
 
       if (selectedIndex === activeQuestion.correctAnswer) {
         playSfx('success');
-        setFailedAttempts((prev) => {
-          const next = { ...prev };
-          delete next[questId];
-          return next;
-        });
+        questWrongCountRef.current = 0;
         return { kind: 'correct' };
       }
 
       playSfx('fail');
-      if (!questAttempted) setQuestAttempted(true);
+      setQuestAttempted(true);
+      questWrongCountRef.current += 1;
 
-      const priorFails = failedAttempts[questId] ?? 0;
-      if (priorFails === 0) {
-        setFailedAttempts((prev) => ({ ...prev, [questId]: 1 }));
-        return { kind: 'retry', message: '答錯了！請再想一想，再試一次！' };
+      if (questWrongCountRef.current === 1) {
+        return { kind: 'retry', message: QUEST_FIRST_WRONG_HINT };
       }
 
-      const correctText = activeQuestion.options[activeQuestion.correctAnswer];
-      setFailedAttempts((prev) => ({ ...prev, [questId]: 2 }));
-      setLockedQuestId(questId);
+      setSeekingNpc(activeQuestion.targetNPC);
       return {
-        kind: 'locked',
-        message: `又答錯囉！這題的正確答案是：${correctText}`,
+        kind: 'failed',
+        message: formatQuestSecondWrongMessage(activeQuestion.errorMsg),
       };
     },
-    [activeQuestion, failedAttempts, questAttempted, playSfx],
+    [activeQuestion, playSfx],
   );
+
+  const handleQuestDismissFailed = useCallback(() => {
+    questWrongCountRef.current = 0;
+    setShowQuiz(false);
+    setActiveQuestion(null);
+    setActiveQuestionId(null);
+  }, []);
 
   const handleQuestCorrect = useCallback(() => {
     if (activeQuestionId === null) return;
@@ -887,33 +955,10 @@ export default function Game({
     setQuestAttempted(false);
     setActiveQuestion(null);
     setActiveQuestionId(null);
-
-    setLockedQuestId((locked) => {
-      if (locked !== null) {
-        setFailedAttempts((prev) => {
-          const next = { ...prev };
-          delete next[locked];
-          return next;
-        });
-      }
-      return null;
-    });
-
-    setFailedAttempts((prev) => {
-      const next = { ...prev };
-      delete next[capturedId];
-      return next;
-    });
+    questWrongCountRef.current = 0;
 
     setTimeout(() => setLastCapturedQuestId(null), 700);
   }, [activeQuestionId, questAttempted, triggerBadgeBurst]);
-
-  const handleQuestDismissLocked = useCallback(() => {
-    setShowQuiz(false);
-    setActiveQuestion(null);
-    setActiveQuestionId(null);
-    setQuestAttempted(false);
-  }, []);
 
   const closeNpc = (learningComplete = false) => {
     if (activeNpc && learningComplete && !npcClueMode) {
@@ -923,9 +968,14 @@ export default function Game({
         return next;
       });
     }
+    if (npcClueMode && activeNpc && seekingNpc === activeNpc.id) {
+      setSeekingNpc(null);
+    }
     setActiveNpc(null);
     setNpcLineIndex(0);
     setNpcClueMode(false);
+    setNpcDialogMode('intro');
+    setNpcFarewellMessage('');
   };
 
   const formatTime = (sec: number) => {
@@ -936,22 +986,22 @@ export default function Game({
 
   const npcProgress = talkedToNPCs.size;
   const uncollectedTreasureCount = getUncollectedTreasures(collectedTreasureIds).length;
-  const hintText =
+  const contextHint =
     needsNpcLearning
       ? adjacentQuestPoint
-        ? `按空白鍵聽老鼠嘲諷你！先找 3 位專家學習（${npcProgress}/3）`
-        : `探索地圖，找 3 位專家按空白鍵學習（${npcProgress}/3）— 靠近老鼠也可按空白鍵互動`
+        ? `按 Enter 鍵，老鼠會嘲諷你！請先用空白鍵找 3 位專家學習（${npcProgress}/3）`
+        : `請靠近專家後按空白鍵對話（${npcProgress}/3）`
       : isCertified && !certModalDismissed
         ? '知識裝備完成！請按空白鍵關閉證書視窗，出發抓老鼠！'
         : isCertified && !ratsVisible
           ? '變異老鼠正在出沒…'
-          : lockedQuestId !== null
-        ? '這隻老鼠太狡猾了！請先去小鎮其他地方抓別隻老鼠，晚點再回來對付牠吧！'
-        : adjacentQuestPoint
-          ? `按空白鍵抓住身旁的變異老鼠！（防疫任務 ${adjacentQuestPoint.questionId}／剩餘 ${remainingQuests} 個）`
-          : adjacentNpcName
-            ? `按空白鍵與【${adjacentNpcName}】對話（僅相鄰時）`
-            : `靠近地圖上的老鼠後按空白鍵觸發任務（剩餘 ${remainingQuests} 個）— 尋寶收集三種防疫道具！`;
+          : seekingNpc
+            ? `答錯了！請用空白鍵向【${NPCS.find((n) => n.id === seekingNpc)?.name ?? '專家'}】取得線索，再按 Enter 抓鼠！`
+            : adjacentQuestPoint
+              ? `捕鼠網已就位！按 Enter 抓住任務鼠（第 ${adjacentQuestPoint.questionId} 題／剩 ${remainingQuests} 隻）`
+              : adjacentNpcName
+                ? `空白鍵與【${adjacentNpcName}】對話（九宮格內）`
+                : `靠近老鼠出現捕鼠網後按 Enter 抓鼠（剩餘 ${remainingQuests} 隻）`;
 
   return (
     <div className="relative w-full h-full overflow-hidden font-sans bg-slate-900 flex flex-col min-h-0">
@@ -1001,9 +1051,14 @@ export default function Game({
               p-2 pb-3 bg-linear-to-t from-black/50 via-black/25 to-transparent"
           >
             <div className="max-w-4xl mx-auto pointer-events-auto">
-              <div className="flex items-center gap-1.5 text-[10px] text-white/90 px-1 drop-shadow">
-                <HelpCircle size={12} className="shrink-0" />
-                <span>{interactionToast ?? radarToast ?? hintText}</span>
+              <div className="flex flex-col gap-0.5 text-[10px] text-white/90 px-1 drop-shadow sm:flex-row sm:items-center sm:gap-2">
+                <HelpCircle size={12} className="shrink-0 hidden sm:block" />
+                <span className="font-bold text-amber-100 shrink-0">{GAME_KEYBOARD_HINT}</span>
+                {(interactionToast ?? radarToast ?? contextHint) && (
+                  <span className="text-white/85 leading-snug">
+                    — {interactionToast ?? radarToast ?? contextHint}
+                  </span>
+                )}
               </div>
             </div>
           </div>
@@ -1193,36 +1248,6 @@ export default function Game({
       </AnimatePresence>
 
       <AnimatePresence>
-        {showQuestLockDialog && (
-          <RpgDialogBox
-            key="quest-lock"
-            speakerName="變異老鼠"
-            speakerBadge={
-              <span className="text-[10px] bg-stone-600/50 text-stone-200 px-2 py-0.5 rounded border border-stone-400/70 font-bold">
-                暫時逃脫
-              </span>
-            }
-            portrait={
-              <div className="w-full h-full flex items-center justify-center scale-125">
-                <RatSprite
-                  variant="muted"
-                  direction="down"
-                  animateWalk={false}
-                  className="!animate-none drop-shadow-lg"
-                />
-              </div>
-            }
-            onClick={() => setShowQuestLockDialog(false)}
-            footer={<RpgContinueHint />}
-          >
-            <p className="text-amber-100 text-sm sm:text-base leading-relaxed font-medium">
-              這隻老鼠太狡猾了！請先去小鎮其他地方抓別隻老鼠，晚點再回來對付牠吧！
-            </p>
-          </RpgDialogBox>
-        )}
-      </AnimatePresence>
-
-      <AnimatePresence>
         {showQuiz && activeQuestion ? (
           <QuestQuizDialog
             key={activeQuestion.id}
@@ -1233,7 +1258,7 @@ export default function Game({
             portraitAlt={PLAYER_ROLE}
             onAnswer={handleQuestAnswer}
             onCompleteCorrect={handleQuestCorrect}
-            onDismissLocked={handleQuestDismissLocked}
+            onDismissFailed={handleQuestDismissFailed}
           />
         ) : null}
       </AnimatePresence>
@@ -1242,20 +1267,33 @@ export default function Game({
         {activeNpc && (
           <NpcDialog
             npc={activeNpc}
-            lines={activeNpc.idleDialogue}
+            mode={npcDialogMode}
+            lines={activeNpc.dialogue}
             lineIndex={npcLineIndex}
             isClueMode={npcClueMode}
+            farewellMessage={npcFarewellMessage}
             onNext={() => setNpcLineIndex((i) => i + 1)}
             onClose={closeNpc}
+            onChooseReview={handleNpcChooseReview}
+            onChooseLeave={handleNpcChooseLeave}
           />
         )}
       </AnimatePresence>
 
       <AnimatePresence>
-        {endgamePhase === 'cutscene' && (
+        {endgamePhase === 'cutscene' && endgameStats && (
           <VictoryCutscene
             key="victory-cutscene"
-            onComplete={() => setEndgamePhase('certificate')}
+            onComplete={() => {
+              setEndgamePhase('certificate');
+              if (!endgameScoreSubmittedRef.current) {
+                endgameScoreSubmittedRef.current = true;
+                setScoreSubmitState({ loading: true, result: null });
+                void submitGameScore(userInfo, endgameStats, preventionScore).then(
+                  (result) => setScoreSubmitState({ loading: false, result }),
+                );
+              }
+            }}
           />
         )}
       </AnimatePresence>
@@ -1267,6 +1305,8 @@ export default function Game({
             userInfo={userInfo}
             stats={endgameStats}
             preventionScore={preventionScore}
+            scoreSubmitLoading={scoreSubmitState.loading}
+            scoreSubmitResult={scoreSubmitState.result}
             onPlayAgain={() => {
               stopVictoryMusic();
               onPlayAgain();

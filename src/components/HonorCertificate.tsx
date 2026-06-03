@@ -1,20 +1,24 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import { motion } from 'motion/react';
 import type { UserInfo } from '../App';
 import type { GameResultStats } from './Game';
 import {
   formatElapsedTime,
+  formatElapsedTimeMMSS,
   getHonorTitle,
   PLAYER_ROLE,
 } from '../constants/gameData';
-import { saveStudentRecord, type SaveResult } from '../lib/saveRecord';
+import type { GameScoreSubmitResult } from '../lib/submitGameScore';
+import { isGoogleFormConfigured } from '../lib/submitGoogleForm';
 import ConfettiOverlay from './ConfettiOverlay';
-import { Award, Home, RefreshCcw, Loader2, CheckCircle } from 'lucide-react';
+import { Award, Home, RefreshCcw, Loader2, CheckCircle, CloudUpload, HardDrive } from 'lucide-react';
 
 interface HonorCertificateProps {
   userInfo: UserInfo;
   stats: GameResultStats;
   preventionScore: number;
+  scoreSubmitLoading: boolean;
+  scoreSubmitResult: GameScoreSubmitResult | null;
   onPlayAgain: () => void;
   onExitHome: () => void;
 }
@@ -23,32 +27,14 @@ export default function HonorCertificate({
   userInfo,
   stats,
   preventionScore,
+  scoreSubmitLoading,
+  scoreSubmitResult,
   onPlayAgain,
   onExitHome,
 }: HonorCertificateProps) {
-  const [isSaving, setIsSaving] = useState(true);
-  const [saveResult, setSaveResult] = useState<SaveResult | 'failed' | null>(null);
-
   const honorTitle = getHonorTitle(preventionScore, stats.score);
   const timeLabel = formatElapsedTime(stats.elapsedSeconds);
-
-  useEffect(() => {
-    let cancelled = false;
-    const saveScore = async () => {
-      try {
-        const result = await saveStudentRecord(userInfo, stats.score);
-        if (!cancelled) setSaveResult(result);
-      } catch {
-        if (!cancelled) setSaveResult('failed');
-      } finally {
-        if (!cancelled) setIsSaving(false);
-      }
-    };
-    void saveScore();
-    return () => {
-      cancelled = true;
-    };
-  }, [userInfo, stats.score]);
+  const timeMmSs = formatElapsedTimeMMSS(stats.elapsedSeconds);
 
   return (
     <motion.div
@@ -112,16 +98,22 @@ export default function HonorCertificate({
 
           <div className="grid grid-cols-1 gap-2 text-left text-sm bg-amber-50/80 rounded-xl border border-amber-200/70 p-3 mb-4">
             <div className="flex justify-between gap-2">
+              <span className="text-amber-700 font-semibold">總積分</span>
+              <span className="font-black text-amber-950 text-lg tabular-nums">
+                {stats.score} / 100
+              </span>
+            </div>
+            <div className="flex justify-between gap-2">
+              <span className="text-amber-700 font-semibold">完成時間</span>
+              <span className="font-black text-amber-950 tabular-nums">{timeMmSs}</span>
+            </div>
+            <div className="flex justify-between gap-2">
               <span className="text-amber-700 font-semibold">遊戲耗時</span>
               <span className="font-black text-amber-950">{timeLabel}</span>
             </div>
             <div className="flex justify-between gap-2">
-              <span className="text-amber-700 font-semibold">防疫總積分</span>
-              <span className="font-black text-orange-600 text-lg">{preventionScore}</span>
-            </div>
-            <div className="flex justify-between gap-2">
-              <span className="text-amber-700 font-semibold">綜合得分</span>
-              <span className="font-black">{stats.score} / 100</span>
+              <span className="text-amber-700 font-semibold">防疫積分</span>
+              <span className="font-black text-orange-600">{preventionScore}</span>
             </div>
           </div>
 
@@ -131,23 +123,36 @@ export default function HonorCertificate({
           </p>
           <p className="text-[10px] text-amber-600/90 font-bold mb-4">— 評語與稱號 —</p>
 
-          {isSaving ? (
+          {scoreSubmitLoading ? (
             <div className="flex items-center justify-center gap-2 text-amber-600 text-xs font-medium mb-4">
               <Loader2 className="animate-spin" size={16} />
-              正在登錄成績…
-            </div>
-          ) : saveResult === 'cloud' ? (
-            <div className="flex items-center justify-center gap-1.5 text-emerald-700 text-xs font-bold mb-4">
-              <CheckCircle size={14} />
-              成績已登錄雲端
-            </div>
-          ) : saveResult === 'local' ? (
-            <div className="flex items-center justify-center gap-1.5 text-amber-700 text-xs font-bold mb-4">
-              <CheckCircle size={14} />
-              成績已儲存於本機
+              正在上傳成績至 Google 表單…
             </div>
           ) : (
-            <p className="text-rose-600 text-xs font-bold mb-4">成績儲存失敗，請通知老師</p>
+            <div className="space-y-1 mb-4 text-xs font-bold">
+              {scoreSubmitResult?.googleForm && (
+                <div className="flex items-center justify-center gap-1.5 text-emerald-700">
+                  <CloudUpload size={14} />
+                  成績已上傳至 Google 試算表
+                </div>
+              )}
+              {!scoreSubmitResult?.googleForm && isGoogleFormConfigured() && (
+                <p className="text-rose-600 text-center">
+                  試算表上傳可能失敗，請通知老師確認 GAS 設定
+                </p>
+              )}
+              {!isGoogleFormConfigured() && (
+                <p className="text-amber-700 text-center">
+                  尚未設定試算表網址，成績僅供畫面顯示
+                </p>
+              )}
+              {scoreSubmitResult?.leaderboardSaved && (
+                <div className="flex items-center justify-center gap-1.5 text-amber-700">
+                  <HardDrive size={14} />
+                  成績已登錄本機排行榜
+                </div>
+              )}
+            </div>
           )}
 
           <div className="grid grid-cols-2 gap-3">

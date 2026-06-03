@@ -1,7 +1,8 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Award } from 'lucide-react';
-import { TOTAL_QUESTS } from '../constants/gameData';
+import { QUEST_POINTS, TOTAL_QUESTS } from '../constants/gameData';
+import type { RatType } from '../constants/ratAssets';
 import RatSprite from './RatSprite';
 
 interface QuestProgressBarProps {
@@ -15,10 +16,12 @@ interface QuestProgressBarProps {
 
 function RatCollectionSlot({
   questId,
+  ratType,
   captured,
   justCaptured,
 }: {
   questId: number;
+  ratType: RatType;
   captured: boolean;
   justCaptured: boolean;
 }) {
@@ -35,6 +38,7 @@ function RatCollectionSlot({
       transition={{ duration: 0.55, ease: 'easeOut' }}
     >
       <RatSprite
+        ratType={ratType}
         variant={captured ? 'normal' : 'muted'}
         direction="down"
         animateWalk={false}
@@ -70,11 +74,15 @@ export default function QuestProgressBar({
     <div className={`relative flex-1 min-w-[88px] ${className}`}>
       <div className="flex items-center justify-between gap-1 mb-0.5">
         <span className="text-[9px] font-black text-amber-950/90 tabular-nums whitespace-nowrap transition-all duration-300">
-          完成度 {completedQuests}/{TOTAL_QUESTS}
+          防疫任務 {completedQuests}/{TOTAL_QUESTS}
         </span>
         {currentScore !== undefined && (
-          <span className="text-[8px] font-bold text-emerald-700 tabular-nums transition-all duration-300">
-            +{currentScore} 分
+          <span
+            className="text-[8px] font-bold text-emerald-800 tabular-nums transition-all duration-300
+              px-1.5 py-0.5 rounded bg-emerald-100/90 border border-emerald-300/70"
+            title="防疫積分"
+          >
+            防疫積分 {currentScore}
           </span>
         )}
       </div>
@@ -102,10 +110,13 @@ export default function QuestProgressBar({
           const questId = i + 1;
           const captured = completedQuestIds.has(questId);
           const justCaptured = lastCapturedQuestId === questId;
+          const ratType =
+            QUEST_POINTS.find((p) => p.questionId === questId)?.ratType ?? 1;
           return (
             <RatCollectionSlot
               key={questId}
               questId={questId}
+              ratType={ratType}
               captured={captured}
               justCaptured={justCaptured}
             />
@@ -124,7 +135,7 @@ export default function QuestProgressBar({
               bg-emerald-600 text-white px-2 py-0.5 rounded-full text-[9px] font-black shadow-md whitespace-nowrap"
           >
             <Award size={12} className="badge-pop shrink-0" />
-            抓到了！
+            防鼠徽章 +1
           </motion.div>
         )}
       </AnimatePresence>

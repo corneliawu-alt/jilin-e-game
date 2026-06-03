@@ -1,5 +1,6 @@
-import React, { useEffect, useCallback } from 'react';
+import React, { useEffect, useCallback, useState } from 'react';
 import { NpcProfile } from '../constants/gameData';
+import type { NpcDialogMode } from '../lib/npcFollowUpDialogue';
 import {
   getNpcPortraitPath,
   getNpcPortraitFallback,
@@ -8,47 +9,34 @@ import RpgDialogBox from './RpgDialogBox';
 
 interface NpcDialogProps {
   npc: NpcProfile;
+  mode: NpcDialogMode;
   lines: string[];
   lineIndex: number;
   isClueMode: boolean;
+  farewellMessage?: string;
   onNext: () => void;
-  /** learningComplete=true 表示已讀完所有學習段落 */
+  /** learningComplete=true 表示首次學習段落讀畢 */
   onClose: (learningComplete: boolean) => void;
+  onChooseReview: () => void;
+  onChooseLeave: () => void;
 }
 
 export default function NpcDialog({
   npc,
+  mode,
   lines,
   lineIndex,
   isClueMode,
+  farewellMessage = '',
   onNext,
   onClose,
+  onChooseReview,
+  onChooseLeave,
 }: NpcDialogProps) {
-  const isOnLastSegment = lineIndex >= lines.length - 1;
-  const isLastLine = isClueMode || isOnLastSegment;
-  const currentLine = isClueMode ? npc.clueDialogue : lines[lineIndex];
+  const [menuFocus, setMenuFocus] = useState<0 | 1>(0);
 
-  const advance = useCallback(() => {
-    if (isClueMode) {
-      onClose(false);
-    } else if (isOnLastSegment) {
-      onClose(true);
-    } else {
-      onNext();
-    }
-  }, [isClueMode, isOnLastSegment, onClose, onNext]);
-
-  useEffect(() => {
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key !== ' ' && e.key !== 'Enter') return;
-      e.preventDefault();
-      e.stopPropagation();
-      advance();
-    };
-
-    window.addEventListener('keydown', onKeyDown, true);
-    return () => window.removeEventListener('keydown', onKeyDown, true);
-  }, [advance]);
+  const isOnLastIntroLine = lineIndex >= lines.length - 1;
+  const effectiveMode: NpcDialogMode = isClueMode ? 'review' : mode;
 
   const portrait = (
     <img
@@ -62,28 +50,184 @@ export default function NpcDialog({
     />
   );
 
-  const actionLabel = isClueMode
-    ? '我知道了'
-    : isOnLastSegment
-      ? '我知道了'
+  const advanceIntro = useCallback(() => {
+    if (isOnLastIntroLine) {
+      onClose(true);
+    } else {
+      onNext();
+    }
+  }, [isOnLastIntroLine, onClose, onNext]);
+
+  const advanceReviewOrClue = useCallback(() => {
+    onClose(false);
+  }, [onClose]);
+
+  const advanceFarewell = useCallback(() => {
+    onClose(false);
+  }, [onClose]);
+
+  const confirmMenuChoice = useCallback(() => {
+    if (menuFocus === 0) {
+      onChooseReview();
+    } else {
+      onChooseLeave();
+    }
+  }, [menuFocus, onChooseReview, onChooseLeave]);
+
+  useEffect(() => {
+    setMenuFocus(0);
+  }, [npc.id, effectiveMode]);
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (effectiveMode === 'menu') {
+        if (e.key === 'ArrowUp' || e.key === '1') {
+          e.preventDefault();
+          e.stopPropagation();
+          setMenuFocus(0);
+          return;
+        }
+        if (e.key === 'ArrowDown' || e.key === '2') {
+          e.preventDefault();
+          e.stopPropagation();
+          setMenuFocus(1);
+          return;
+        }
+        if (e.key === ' ' || e.key === 'Enter') {
+          e.preventDefault();
+          e.stopPropagation();
+          confirmMenuChoice();
+        }
+        return;
+      }
+
+      if (e.key !== ' ' && e.key !== 'Enter') return;
+      e.preventDefault();
+      e.stopPropagation();
+
+      if (effectiveMode === 'intro') {
+        advanceIntro();
+      } else if (effectiveMode === 'review') {
+        advanceReviewOrClue();
+      } else if (effectiveMode === 'farewell') {
+        advanceFarewell();
+      }
+    };
+
+    window.addEventListener('keydown', onKeyDown, true);
+    return () => window.removeEventListener('keydown', onKeyDown, true);
+  }, [
+    effectiveMode,
+    advanceIntro,
+    advanceReviewOrClue,
+    advanceFarewell,
+    confirmMenuChoice,
+  ]);
+
+  const speakerBadge = isClueMode ? (
+    <span className="text-[10px] bg-rose-500/40 text-rose-100 px-2 py-0.5 rounded border border-rose-400/60 font-bold">
+      線索提示
+    </span>
+  ) : effectiveMode === 'menu' ? (
+    <span className="text-[10px] bg-violet-500/35 text-violet-100 px-2 py-0.5 rounded border border-violet-400/50 font-bold">
+      請選擇
+    </span>
+  ) : effectiveMode === 'review' && !isClueMode ? (
+    <span className="text-[10px] bg-amber-500/35 text-amber-100 px-2 py-0.5 rounded border border-amber-400/50 font-bold">
+      重點複習
+    </span>
+  ) : effectiveMode === 'review' ? (
+    <span className="text-[10px] bg-rose-500/40 text-rose-100 px-2 py-0.5 rounded border border-rose-400/60 font-bold">
+      線索提示
+    </span>
+  ) : effectiveMode === 'farewell' ? (
+    <span className="text-[10px] bg-emerald-500/35 text-emerald-100 px-2 py-0.5 rounded border border-emerald-400/50 font-bold">
+      出發提示
+    </span>
+  ) : (
+    <span className="text-[10px] bg-sky-500/30 text-sky-100 px-2 py-0.5 rounded border border-sky-400/50 font-bold tabular-nums">
+      {lineIndex + 1} / {lines.length}
+    </span>
+  );
+
+  if (effectiveMode === 'menu') {
+    const optionClass = (focused: boolean) =>
+      `w-full text-left px-3 py-2.5 rounded-lg border-2 font-bold text-sm transition-all
+        ${
+          focused
+            ? 'border-amber-400 bg-amber-500/25 text-amber-50 shadow-[0_0_12px_rgba(251,191,36,0.35)]'
+            : 'border-white/15 bg-black/30 text-white/85 hover:border-amber-500/40'
+        }`;
+
+    return (
+      <RpgDialogBox
+        speakerName={npc.name}
+        speakerBadge={speakerBadge}
+        portrait={portrait}
+        footer={
+          <p className="text-[10px] text-amber-200/70">
+            ↑↓ 或 1／2 切換 • 空白鍵確認
+          </p>
+        }
+      >
+        <p className="text-white text-sm sm:text-base leading-relaxed font-medium mb-3">
+          又見面啦，特級稽查員！接下來你想怎麼做？
+        </p>
+        <div className="flex flex-col gap-2">
+          <button
+            type="button"
+            className={optionClass(menuFocus === 0)}
+            onClick={onChooseReview}
+            onMouseEnter={() => setMenuFocus(0)}
+          >
+            A. 我想重點複習
+          </button>
+          <button
+            type="button"
+            className={optionClass(menuFocus === 1)}
+            onClick={onChooseLeave}
+            onMouseEnter={() => setMenuFocus(1)}
+          >
+            B. 我接下來該做什麼？
+          </button>
+        </div>
+      </RpgDialogBox>
+    );
+  }
+
+  const bodyText =
+    effectiveMode === 'review'
+      ? isClueMode
+        ? npc.clueDialogue
+        : npc.summary
+      : effectiveMode === 'farewell'
+        ? farewellMessage
+        : lines[lineIndex];
+
+  const isLastLine =
+    effectiveMode === 'review' ||
+    effectiveMode === 'farewell' ||
+    (effectiveMode === 'intro' && isOnLastIntroLine);
+
+  const actionLabel =
+    isClueMode || effectiveMode === 'review' || effectiveMode === 'farewell' || isOnLastIntroLine
+      ? effectiveMode === 'farewell'
+        ? '出發！'
+        : '我知道了'
       : '繼續';
+
+  const handleAdvance = () => {
+    if (effectiveMode === 'intro') advanceIntro();
+    else if (effectiveMode === 'review') advanceReviewOrClue();
+    else if (effectiveMode === 'farewell') advanceFarewell();
+  };
 
   return (
     <RpgDialogBox
       speakerName={npc.name}
-      speakerBadge={
-        isClueMode ? (
-          <span className="text-[10px] bg-rose-500/40 text-rose-100 px-2 py-0.5 rounded border border-rose-400/60 font-bold">
-            線索提示
-          </span>
-        ) : (
-          <span className="text-[10px] bg-sky-500/30 text-sky-100 px-2 py-0.5 rounded border border-sky-400/50 font-bold tabular-nums">
-            {lineIndex + 1} / {lines.length}
-          </span>
-        )
-      }
+      speakerBadge={speakerBadge}
       portrait={portrait}
-      onClick={advance}
+      onClick={handleAdvance}
       footer={
         <div className="flex items-center justify-between gap-2">
           <p className="text-[10px] text-amber-200/70 hidden sm:block">
@@ -93,7 +237,7 @@ export default function NpcDialog({
             type="button"
             onClick={(e) => {
               e.stopPropagation();
-              advance();
+              handleAdvance();
             }}
             className={`ml-auto px-4 py-1.5 rounded-lg font-black text-xs sm:text-sm
               transition-all duration-200 shadow-md
@@ -109,7 +253,7 @@ export default function NpcDialog({
       }
     >
       <p className="text-white text-sm sm:text-base leading-relaxed font-medium whitespace-pre-wrap">
-        {currentLine}
+        {bodyText}
       </p>
     </RpgDialogBox>
   );

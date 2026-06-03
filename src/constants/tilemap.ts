@@ -382,6 +382,8 @@ export type QuestPoint = {
   questionId: number;
   x: number;
   y: number;
+  /** 1～3：對應 enemyrat/rat1~3.png 行走圖 */
+  ratType: 1 | 2 | 3;
 };
 
 export type TreasureVariant = 'chest' | 'sparkle';
@@ -728,7 +730,15 @@ function buildReserved(): Set<string> {
   const r = new Set<string>();
   const spawn = getPlayerSpawnPoint();
   r.add(`${spawn.x},${spawn.y}`);
-  Object.values(NPC_GRID_POSITIONS).forEach((p) => r.add(`${p.x},${p.y}`));
+  Object.values(NPC_GRID_POSITIONS).forEach((p) => {
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        const nx = p.x + dx;
+        const ny = p.y + dy;
+        if (isInMap(nx, ny)) r.add(`${nx},${ny}`);
+      }
+    }
+  });
   return r;
 }
 
@@ -2333,7 +2343,12 @@ function generateQuestPoints(
     if (!rat) return;
     used.add(`${rat.x},${rat.y}`);
     reserved.add(`${rat.x},${rat.y}`);
-    points.push({ questionId: qId, x: rat.x, y: rat.y });
+    points.push({
+      questionId: qId,
+      x: rat.x,
+      y: rat.y,
+      ratType: (Math.floor(Math.random() * 3) + 1) as 1 | 2 | 3,
+    });
   });
 
   zoneQuests.forEach(({ questionId, zone, prefer }) => {
@@ -2344,7 +2359,12 @@ function generateQuestPoints(
     if (!isValidRatSpawn(map, meta, pick.x, pick.y, deco, new Set())) return;
     used.add(`${pick.x},${pick.y}`);
     reserved.add(`${pick.x},${pick.y}`);
-    points.push({ questionId, x: pick.x, y: pick.y });
+    points.push({
+      questionId,
+      x: pick.x,
+      y: pick.y,
+      ratType: (Math.floor(Math.random() * 3) + 1) as 1 | 2 | 3,
+    });
   });
 
   return points

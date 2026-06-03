@@ -1,6 +1,7 @@
 import { NPC_DEFAULT_FACING, type SpriteDirection } from './characterAssets';
 import type { GridPosition, TargetNPC } from './gameData';
 import { GRID_WIDTH, GRID_HEIGHT, NPC_GRID_POSITIONS } from './mapConfig';
+import type { RatPositionsMap } from './ratWander';
 import { isBorderBarrierTile, isBlockedTile } from './tilemap';
 
 function isInBounds(x: number, y: number): boolean {
@@ -68,17 +69,32 @@ export function isNpcCellOccupied(
   );
 }
 
-/** NPC 單格移動：地形可通行、不踩玩家／其他 NPC */
+function isActiveRatAt(
+  x: number,
+  y: number,
+  ratPositions: RatPositionsMap | undefined,
+  completedQuestIds: ReadonlySet<number> | undefined,
+): boolean {
+  if (!ratPositions || !completedQuestIds) return false;
+  return Object.values(ratPositions).some(
+    (r) => !completedQuestIds.has(r.questId) && r.x === x && r.y === y,
+  );
+}
+
+/** NPC 單格移動：地形可通行、不踩玩家／其他 NPC／任務鼠 */
 export function canNpcStepTo(
   x: number,
   y: number,
   npcId: TargetNPC,
   npcPositions: NpcPositionsMap,
   playerPos: GridPosition,
+  ratPositions?: RatPositionsMap,
+  completedQuestIds?: ReadonlySet<number>,
 ): boolean {
   if (!isInBounds(x, y)) return false;
   if (playerPos.x === x && playerPos.y === y) return false;
   if (isNpcCellOccupied(x, y, npcPositions, npcId)) return false;
+  if (isActiveRatAt(x, y, ratPositions, completedQuestIds)) return false;
   if (isBlockedTile(x, y) || isBorderBarrierTile(x, y)) return false;
   return true;
 }
@@ -111,6 +127,8 @@ export function nudgeNpcsOffCell(
   cellX: number,
   cellY: number,
   playerPos: GridPosition,
+  ratPositions?: RatPositionsMap,
+  completedQuestIds?: ReadonlySet<number>,
 ): NpcPositionsMap {
   const next = cloneNpcPositions(positions);
   const stepOrder = [
@@ -127,7 +145,8 @@ export function nudgeNpcsOffCell(
     for (const { dx, dy } of stepOrder) {
       const tx = cellX + dx;
       const ty = cellY + dy;
-      if (!canNpcStepTo(tx, ty, npcId, next, playerPos)) continue;
+      if (!canNpcStepTo(tx, ty, npcId, next, playerPos, ratPositions, completedQuestIds))
+        continue;
 
       let direction = npc.direction;
       let stance = npc.stance;
@@ -151,9 +170,33 @@ export function nudgeNpcsOffCell(
   return next;
 }
 
+/** NPC 與任務鼠同格時，將 NPC 輕推至相鄰空格 */
+export function nudgeNpcsOffRatCells(
+  positions: NpcPositionsMap,
+  playerPos: GridPosition,
+  ratPositions: RatPositionsMap,
+  completedQuestIds: ReadonlySet<number>,
+): NpcPositionsMap {
+  let next = positions;
+  for (const rat of Object.values(ratPositions)) {
+    if (completedQuestIds.has(rat.questId)) continue;
+    next = nudgeNpcsOffCell(
+      next,
+      rat.x,
+      rat.y,
+      playerPos,
+      ratPositions,
+      completedQuestIds,
+    );
+  }
+  return next;
+}
+
 export function computeNpcWanderTick(
   positions: NpcPositionsMap,
   playerPos: GridPosition,
+  ratPositions?: RatPositionsMap,
+  completedQuestIds?: ReadonlySet<number>,
 ): NpcPositionsMap {
   const next = cloneNpcPositions(positions);
 
@@ -173,7 +216,19 @@ export function computeNpcWanderTick(
     for (const { dx, dy } of deltas) {
       const target = { x: current.x + dx, y: current.y + dy };
       if (!isWithinWanderRadius(target, spawn)) continue;
-      if (!canNpcStepTo(target.x, target.y, npcId, next, playerPos)) continue;
+      if (
+        !canNpcStepTo(
+          target.x,
+          target.y,
+          npcId,
+          next,
+          playerPos,
+          ratPositions,
+          completedQuestIds,
+        )
+      ) {
+        continue;
+      }
 
       let direction = current.direction;
       let stance = current.stance;

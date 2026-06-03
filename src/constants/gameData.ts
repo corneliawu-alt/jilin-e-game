@@ -9,6 +9,24 @@ export const GAME_TITLE = '料理鼠亡 - 漢他病毒防衛戰';
 export const PLAYER_ROLE = '特級衛生稽查員';
 export const TOTAL_QUESTS = 10;
 
+/** 地圖底部固定操作說明（純鍵盤） */
+export const GAME_KEYBOARD_HINT = 'WASD移動 • 空白鍵:對話 • Enter鍵:抓老鼠';
+
+/** 任務答題：第一次答錯時的統一提示（不關閉對話框） */
+export const QUEST_FIRST_WRONG_HINT = '哎呀，好像不對喔！再給你一次機會！';
+
+/** 任務答題：第二次答錯時，接在 errorMsg 前的前綴 */
+export function formatQuestSecondWrongMessage(errorMsg: string): string {
+  const trimmed = errorMsg.replace(/^答錯囉！?/, '').trim();
+  return trimmed
+    ? `答錯兩次囉！${trimmed}`
+    : '答錯兩次囉！建議你去找對應的 NPC 複習後再來挑戰！';
+}
+
+/** 劇情大綱（開場與說明用） */
+export const GAME_STORY_SUMMARY =
+  '曾經以美食聞名的「吉林小鎮」，近期突然爆發不明的發燒與出血疫情。玩家操控吉林娃娃，在大型 2D 小鎮地圖中探索，前往餐廳、診所與倉庫尋找三位關鍵 NPC，並在地上尋找隱藏寶物與任務點，完成 10 項防疫任務。完成後依答題正確率與時間結算得分，頒發星級榮譽獎狀並上傳成績。';
+
 export type TargetNPC = 'Chef' | 'Doctor' | 'Captain';
 export type MapZone = 'restaurant' | 'clinic' | 'warehouse';
 
@@ -58,6 +76,8 @@ import type { RatPositionsMap } from './ratWander';
 export type { NpcPositionsMap } from './npcWander';
 export { NPC_SPAWN_POSITIONS } from './npcWander';
 export type { RatPositionsMap, RatWorldState } from './ratWander';
+export type { RatType } from './ratAssets';
+export { getRatSpriteSrc, rollRandomRatType } from './ratAssets';
 
 /** 主城門正上方、門內幹道起點（由地圖演算法決定） */
 export const PLAYER_START = getPlayerSpawnPoint();
@@ -205,10 +225,14 @@ export function normalizeGridPosition(pos: GridPosition): GridPosition {
 }
 
 export function normalizeQuestPoint(point: QuestPoint): QuestPoint {
+  const ratType = point.ratType;
+  const normalizedRatType =
+    ratType === 1 || ratType === 2 || ratType === 3 ? ratType : 1;
   return {
     questionId: toGridNumber(point.questionId),
     x: toGridNumber(point.x),
     y: toGridNumber(point.y),
+    ratType: normalizedRatType,
   };
 }
 
@@ -281,6 +305,7 @@ export function getActiveRatQuestPoints(
       questionId,
       x: toGridNumber(live?.x ?? p.x),
       y: toGridNumber(live?.y ?? p.y),
+      ratType: live?.ratType ?? p.ratType ?? 1,
     };
   });
 }
@@ -495,7 +520,7 @@ export const QUESTIONS: QuestQuestion[] = [
       '(D) 魚缸內部',
     ],
     correctAnswer: 2,
-    successMsg: '敏銳的觀察力！你成功清除了老鼠溫床！',
+    successMsg: '敏銳的觀察力！你成功清除老鼠溫床！',
     errorMsg: '老鼠喜歡躲在哪裡你還不知道嗎？快去問問【餐廳大廚】環境死角在哪裡。',
     targetNPC: 'Chef',
   },
@@ -599,7 +624,7 @@ export function getQuestPointAt(
 }
 
 /**
- * 空白鍵用：在互動範圍內找「唯一」最近未完成任務鼠
+ * Enter／Z 抓鼠用：在互動範圍內找「唯一」最近未完成任務鼠
  * 以 QUEST_POINTS + ratPositions 即時座標為準，確保 questionId 永遠有效
  */
 export function findNearestInteractableQuest(
@@ -668,6 +693,7 @@ export function resolveRatQuestTarget(
     questionId: questId,
     x: live?.x ?? spawn?.x ?? point.x,
     y: live?.y ?? spawn?.y ?? point.y,
+    ratType: live?.ratType ?? spawn?.ratType ?? point.ratType ?? 1,
   });
 
   const question = getQuestionById(questId);
@@ -733,7 +759,11 @@ export type NpcProfile = {
   imagePath: string;
   x: number;
   y: number;
-  idleDialogue: string[];
+  /** 首次學習：多段對話，空白鍵逐句閱讀 */
+  dialogue: string[];
+  /** 再次拜訪時「重點複習」的精簡摘要 */
+  summary: string;
+  /** 答錯任務後前來請教時的線索明示（完整衛教） */
   clueDialogue: string;
 };
 
@@ -747,15 +777,16 @@ export const NPCS: NpcProfile[] = [
     imagePath: getNpcPortraitPath('Chef'),
     x: NPC_GRID_POSITIONS.Chef.x,
     y: NPC_GRID_POSITIONS.Chef.y,
-    idleDialogue: [
-      '哎呀，氣死我了！你是新來的衛生稽查員對吧？快幫幫我，我這頂級廚房可容不下半隻老鼠！',
-      '要知道，防鼠最重要的最高指導原則就是「三不」：不讓鼠來、不讓鼠住、不讓鼠吃！你得牢牢記住！',
-      '像我們餐廳啊，廚餘和動物飼料絕對要妥善密封處理，斷絕老鼠的食物來源，這就是「不讓鼠吃」。',
-      '還有，平時得仔細檢查牆角的破洞、清理倉庫和儲藏室這些容易躲藏的死角。這樣才能做到「不讓鼠住」！懂了嗎？',
-      '對了！聽說鎮上的死角藏著一些特別的寶物...像是「滅鼠妙寶-黏鼠板」！如果你在角落探索時找到了，對付這些傢伙會更有利喔！快去巡視吧！',
+    dialogue: [
+      '哎呀，氣死我了！我這頂級廚房可容不下半隻老鼠！',
+      '聽好了，特級衛生稽查員，要防老鼠，最重要的就是遵守「三不政策」！',
+      '也就是「不讓鼠來、不讓鼠住、不讓鼠吃」！',
+      '廚餘和動物飼料一定要密封收好，絕對不能讓牠們有東西吃！',
+      '牆角的破洞、水管的縫隙也要確實補起來，別給牠們機會溜進來！防鼠的基礎，就是環境整潔！',
     ],
+    summary: '記住「三不」政策：不讓鼠來、不讓鼠住、不讓鼠吃！廚餘要密封，破洞要補好！',
     clueDialogue:
-      '防鼠三不：不讓鼠來、不讓鼠住、不讓鼠吃！廚餘和飼料要密封，牆角破洞要補好，倉庫死角要清理！',
+      '要防老鼠，最重要的就是「不讓鼠來、不讓鼠住、不讓鼠吃」！廚餘和飼料要密封收好，牆角破洞與水管縫隙要補牢，環境整潔是防鼠基礎！',
   },
   {
     id: 'Doctor',
@@ -766,15 +797,17 @@ export const NPCS: NpcProfile[] = [
     imagePath: getNpcPortraitPath('Doctor'),
     x: NPC_GRID_POSITIONS.Doctor.x,
     y: NPC_GRID_POSITIONS.Doctor.y,
-    idleDialogue: [
-      '你好啊，年輕的稽查員。吉林小鎮最近爆發了漢他病毒疫情，情況很不樂觀...',
-      '這是一種人畜共通傳染病！你不需要被老鼠咬到，只要吸入或接觸到帶有病毒的老鼠糞尿「飛揚塵土」，就有極高的感染風險！',
-      '你要特別注意，這病毒的潛伏期變數很大，通常是數天到兩個月不等，防不勝防。',
-      '一開始的症狀很像感冒：會突然且持續性發燒，伴隨頭痛、背痛、虛弱，甚至會有結膜充血和嘔吐的現象。',
-      '最危險的是第 3 到第 6 天！部分患者病情會急轉直下，出現出血、低血壓、休克，甚至引發嚴重的「急性腎衰竭」！這可不是鬧著玩的，請務必小心！',
+    dialogue: [
+      '漢他病毒可是人畜共通的危險疾病！',
+      '最常見的感染途徑，就是吸入或接觸到帶有病毒的老鼠糞尿所揚起的塵土。',
+      '這病毒很狡猾，感染後的潛伏期從數天到兩個月都有可能。',
+      '發病初期症狀很像感冒，會突然發燒、頭痛、背痛、甚至嘔吐。',
+      '到了第 3 到 6 天是最危險的時期，可能會出現急性腎衰竭與休克，一定要馬上就醫！',
     ],
+    summary:
+      '漢他病毒會透過鼠糞尿污染的塵土傳染，潛伏期可達兩個月。初期症狀像感冒，後期可能有急性腎衰竭等致命併發症！',
     clueDialogue:
-      '漢他病毒經糞尿塵土傳播，潛伏期數天至兩個月。初期像感冒，第 3～6 天最危險，可能出血、低血壓、急性腎衰竭！',
+      '漢他病毒經鼠糞尿揚塵傳染，潛伏期數天至兩個月。初期像感冒（發燒、頭痛、嘔吐等），第 3～6 天可能急性腎衰竭或休克，務必盡早就醫！',
   },
   {
     id: 'Captain',
@@ -785,15 +818,17 @@ export const NPCS: NpcProfile[] = [
     imagePath: getNpcPortraitPath('Captain'),
     x: NPC_GRID_POSITIONS.Captain.x,
     y: NPC_GRID_POSITIONS.Captain.y,
-    idleDialogue: [
-      '喂！那邊那個菜鳥稽查員！別亂碰地上的髒東西！',
-      '聽好了，如果發現老鼠的排泄物，「絕對不可以」直接拿掃把大力掃！那會揚起帶病毒的塵土！',
-      '清理前的第一步，必須先打開門窗通風，並佩戴好「口罩」和「橡膠手套」，做好萬全防護才能開始作業。',
-      '至於消毒液的調配比例...記清楚了：使用市售漂白水與清水，比例是「100cc 漂白水加 1 公升清水」。這才是能殺死病毒的黃金比例！',
-      '最後，也是最重要的終極密碼：將漂白水潑灑在髒污處後，千萬別急著擦！你必須耐心等待「30 分鐘」讓消毒作用完全發揮，才能動手清理！去吧，小鎮的整潔就交給你了！',
+    dialogue: [
+      '打掃老鼠大便千萬別直接用掃把大力掃！那樣會讓帶有病毒的塵土飛揚起來，非常危險！',
+      '聽好標準作業流程：第一步，一定要先打開門窗保持通風，並確實戴上口罩和橡膠手套。',
+      '第二步，調配消毒水。將市售漂白水與清水，以 1:10 的比例稀釋（100cc 漂白水 + 1 公升清水）。',
+      '第三步，將稀釋好的漂白水輕輕潑灑在有鼠糞的地方。',
+      '最後，必須等待「30 分鐘」讓消毒液發揮作用殺死病毒後，才可以開始清理！',
     ],
+    summary:
+      '清理鼠糞要開窗通風、戴口罩手套。漂白水與清水以 1:10 稀釋潑灑，等待 30 分鐘後才能清理！',
     clueDialogue:
-      '清理鼠糞勿直接掃！先通風，戴口罩和手套。漂白水 100cc 加 1 公升清水，潑灑後等待 30 分鐘再清理！',
+      '清理鼠糞：開窗通風、戴口罩與手套 → 漂白水 1:10 稀釋潑灑 → 靜置 30 分鐘後再清理。絕勿直接掃起以免病毒飛揚！',
   },
 ];
 
@@ -870,4 +905,11 @@ export function formatElapsedTime(elapsedSeconds: number): string {
   const m = Math.floor(elapsedSeconds / 60);
   const s = elapsedSeconds % 60;
   return `${m} 分 ${s.toString().padStart(2, '0')} 秒`;
+}
+
+/** Google 表單／成績上傳用：MM:SS */
+export function formatElapsedTimeMMSS(elapsedSeconds: number): string {
+  const m = Math.floor(elapsedSeconds / 60);
+  const s = elapsedSeconds % 60;
+  return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
 }

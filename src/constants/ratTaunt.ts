@@ -2,7 +2,7 @@ import type { TargetNPC } from './gameData';
 
 export const REQUIRED_LEARNING_NPCS: TargetNPC[] = ['Chef', 'Doctor', 'Captain'];
 
-/** 尚未完成 NPC 學習時，老鼠的通用嘲諷（空白鍵觸發） */
+/** 尚未完成 NPC 學習時，老鼠的通用嘲諷（Enter／Z 抓鼠觸發） */
 export const PRE_LEARNING_RAT_GENERIC_TAUNT =
   '吱吱！你連怎麼對付我都不知道，還想抓我？快去跟鎮上的大人們學學吧！';
 

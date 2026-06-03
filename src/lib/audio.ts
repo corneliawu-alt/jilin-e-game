@@ -1,7 +1,11 @@
 /** 背景音樂路徑（檔案請放在 public/music/bgm.mp3） */
 export const BGM_SRC = '/music/bgm.mp3';
 
+/** 任務答題戰鬥 BGM（public/music/battle.mp3） */
+export const BATTLE_BGM_SRC = '/music/battle.mp3';
+
 export const DEFAULT_BGM_VOLUME = 0.45;
+export const DEFAULT_BATTLE_BGM_VOLUME = 0.5;
 /** BGM 播放 SFX 時閃避至原音量比例 */
 export const BGM_DUCKED_VOLUME_RATIO = 0.2;
 export const SFX_VOLUME = 0.8;
@@ -48,6 +52,14 @@ export function createBgmAudio(): HTMLAudioElement {
   audio.loop = true;
   audio.preload = 'auto';
   audio.volume = DEFAULT_BGM_VOLUME;
+  return audio;
+}
+
+export function createBattleBgmAudio(): HTMLAudioElement {
+  const audio = new Audio(BATTLE_BGM_SRC);
+  audio.loop = true;
+  audio.preload = 'auto';
+  audio.volume = DEFAULT_BATTLE_BGM_VOLUME;
   return audio;
 }
 

@@ -6,8 +6,10 @@ const OPTION_LABELS = ['A', 'B', 'C', 'D'] as const;
 
 export type QuestAnswerOutcome =
   | { kind: 'correct' }
+  /** 第一次答錯：留在對話框內再選一次 */
   | { kind: 'retry'; message: string }
-  | { kind: 'locked'; message: string };
+  /** 第二次答錯：顯示線索後關閉任務 */
+  | { kind: 'failed'; message: string };
 
 interface QuestQuizDialogProps {
   question: QuestQuestion;
@@ -17,7 +19,8 @@ interface QuestQuizDialogProps {
   portraitAlt: string;
   onAnswer: (selectedIndex: number) => QuestAnswerOutcome;
   onCompleteCorrect: () => void;
-  onDismissLocked: () => void;
+  /** 第二次答錯後按「我知道了」：關閉任務對話框（可稍後自行找 NPC） */
+  onDismissFailed: () => void;
 }
 
 export default function QuestQuizDialog({
@@ -28,21 +31,13 @@ export default function QuestQuizDialog({
   portraitAlt,
   onAnswer,
   onCompleteCorrect,
-  onDismissLocked,
+  onDismissFailed,
 }: QuestQuizDialogProps) {
   const [phase, setPhase] = useState<'choose' | 'feedback'>('choose');
   const [selectedOption, setSelectedOption] = useState<number | null>(null);
   const [outcome, setOutcome] = useState<QuestAnswerOutcome | null>(null);
   const [feedbackText, setFeedbackText] = useState('');
   const [hoverOption, setHoverOption] = useState<number | null>(null);
-
-  const resetToChoose = useCallback(() => {
-    setPhase('choose');
-    setSelectedOption(null);
-    setOutcome(null);
-    setFeedbackText('');
-    setHoverOption(null);
-  }, []);
 
   const handleOptionSelect = useCallback(
     (index: number) => {
@@ -62,12 +57,18 @@ export default function QuestQuizDialog({
     if (phase !== 'feedback' || !outcome) return;
     if (outcome.kind === 'correct') {
       onCompleteCorrect();
-    } else if (outcome.kind === 'retry') {
-      resetToChoose();
-    } else {
-      onDismissLocked();
+      return;
     }
-  }, [phase, outcome, onCompleteCorrect, resetToChoose, onDismissLocked]);
+    if (outcome.kind === 'retry') {
+      setPhase('choose');
+      setSelectedOption(null);
+      setOutcome(null);
+      setFeedbackText('');
+      setHoverOption(null);
+      return;
+    }
+    onDismissFailed();
+  }, [phase, outcome, onCompleteCorrect, onDismissFailed]);
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -108,8 +109,10 @@ export default function QuestQuizDialog({
   );
 
   const isCorrectFeedback = outcome?.kind === 'correct';
+  const isRetryFeedback = outcome?.kind === 'retry';
+  const isFailedFeedback = outcome?.kind === 'failed';
   const showOptionReview =
-    phase === 'feedback' && selectedOption !== null && outcome?.kind !== 'retry';
+    phase === 'feedback' && selectedOption !== null && isCorrectFeedback;
 
   return (
     <RpgDialogBox
@@ -132,11 +135,11 @@ export default function QuestQuizDialog({
               >
                 繼續 ▶
               </button>
-            ) : outcome?.kind === 'retry' ? (
+            ) : isRetryFeedback ? (
               <button
                 type="button"
                 onClick={handleContinue}
-                className="px-4 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-500 text-white
+                className="px-4 py-1.5 rounded-lg bg-sky-600 hover:bg-sky-500 text-white
                   font-black text-xs sm:text-sm transition-all duration-200 shadow-md"
               >
                 再試一次 ▶
@@ -145,10 +148,10 @@ export default function QuestQuizDialog({
               <button
                 type="button"
                 onClick={handleContinue}
-                className="px-4 py-1.5 rounded-lg bg-slate-600 hover:bg-slate-500 text-white
+                className="px-4 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-500 text-white
                   font-black text-xs sm:text-sm transition-all duration-200 shadow-md"
               >
-                離開 ▶
+                我知道了
               </button>
             )}
           </div>
@@ -157,7 +160,7 @@ export default function QuestQuizDialog({
     >
       <p
         className={`text-sm sm:text-base leading-relaxed font-medium mb-3 min-h-[2.5rem] transition-colors duration-300
-          ${phase === 'feedback' && !isCorrectFeedback ? 'text-rose-100' : 'text-white'}`}
+          ${phase === 'feedback' && (isRetryFeedback || isFailedFeedback) ? (isRetryFeedback ? 'text-amber-100' : 'text-rose-100') : 'text-white'}`}
       >
         {phase === 'choose' ? question.question : feedbackText}
       </p>

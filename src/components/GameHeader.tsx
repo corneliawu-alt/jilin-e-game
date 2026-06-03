@@ -84,7 +84,7 @@ export default function GameHeader({
               bg-gradient-to-r from-sky-100 via-sky-50 to-sky-100
               border border-sky-300/80 rounded-md px-2 py-1 shadow-sm"
           >
-            請前往地圖尋找 3 位防疫專家，靠近後按空白鍵對話！（{npcProgress}/3）
+            請前往地圖尋找 3 位防疫專家，靠近後按空白鍵對話（Enter 鍵抓鼠）！（{npcProgress}/3）
           </div>
         ) : (
           <div

@@ -2,13 +2,14 @@ import React, { useEffect, useState } from 'react';
 import { motion } from 'motion/react';
 import { UserInfo } from '../App';
 import { GameResultStats } from './Game';
-import { saveStudentRecord, type SaveResult } from '../lib/saveRecord';
+import { submitGameScore, type GameScoreSubmitResult } from '../lib/submitGameScore';
 import { RefreshCcw, Share2, CheckCircle, Loader2, Star, Award } from 'lucide-react';
 import { PLAYER_ROLE } from '../constants/gameData';
 
 interface ResultProps {
   userInfo: UserInfo;
   stats: GameResultStats;
+  preventionScore?: number;
   onRestart: () => void;
 }
 
@@ -18,9 +19,14 @@ const STAR_LABELS: Record<1 | 2 | 3, string> = {
   1: '見習衛生稽查員',
 };
 
-export default function Result({ userInfo, stats, onRestart }: ResultProps) {
+export default function Result({
+  userInfo,
+  stats,
+  preventionScore = 0,
+  onRestart,
+}: ResultProps) {
   const [isSaving, setIsSaving] = useState(true);
-  const [saveResult, setSaveResult] = useState<SaveResult | 'failed' | null>(null);
+  const [saveResult, setSaveResult] = useState<GameScoreSubmitResult | null>(null);
 
   const minutes = Math.floor(stats.elapsedSeconds / 60);
   const seconds = stats.elapsedSeconds % 60;
@@ -31,11 +37,11 @@ export default function Result({ userInfo, stats, onRestart }: ResultProps) {
 
     const saveScore = async () => {
       try {
-        const result = await saveStudentRecord(userInfo, stats.score);
+        const result = await submitGameScore(userInfo, stats, preventionScore);
         if (!cancelled) setSaveResult(result);
       } catch (error) {
         console.error('Error saving record:', error);
-        if (!cancelled) setSaveResult('failed');
+        if (!cancelled) setSaveResult({ googleForm: false, leaderboardSaved: false });
       } finally {
         if (!cancelled) setIsSaving(false);
       }
@@ -112,15 +118,15 @@ export default function Result({ userInfo, stats, onRestart }: ResultProps) {
           <Loader2 className="animate-spin" size={18} />
           正在儲存成績...
         </div>
-      ) : saveResult === 'cloud' ? (
+      ) : saveResult?.googleForm ? (
         <div className="flex items-center gap-2 text-emerald-600 mb-6 font-bold bg-emerald-50 px-3 py-2 rounded-full border border-emerald-100 text-sm">
           <CheckCircle size={18} />
-          成績已成功登錄雲端
+          成績已上傳至 Google 試算表
         </div>
-      ) : saveResult === 'local' ? (
+      ) : saveResult?.leaderboardSaved ? (
         <div className="flex items-center gap-2 text-amber-600 mb-6 font-bold bg-amber-50 px-3 py-2 rounded-full border border-amber-100 text-sm">
           <CheckCircle size={18} />
-          成績已儲存於本機瀏覽器
+          成績已登錄本機排行榜
         </div>
       ) : (
         <div className="text-rose-500 mb-6 font-bold text-sm">儲存失敗，請通知老師</div>

@@ -16,10 +16,12 @@ import {
   BOMP_FADE_RESTORE_MS,
   BOMP_GAIN,
   BGM_FADE_OUT_MS,
+  createBattleBgmAudio,
   createBgmAudio,
   createBompAudio,
   createSfxAudio,
   createWinAudio,
+  DEFAULT_BATTLE_BGM_VOLUME,
   routeAudioThroughGain,
   DEFAULT_BGM_VOLUME,
   getDuckedBgmVolume,
@@ -41,12 +43,20 @@ type BgmContextValue = {
   /** 結局：BGM 淡出後播放 win.mp3 */
   beginVictoryMusic: () => void;
   stopVictoryMusic: () => void;
+  /** 觸發任務答題：僅切換 battle BGM（bomp 僅在 playRatUnlockBomp） */
+  onQuestDialogOpened: () => void;
+  /** 關閉任務答題：停止 battle、恢復小鎮 BGM */
+  onQuestDialogClosed: () => void;
 };
 
 const BgmContext = createContext<BgmContextValue | null>(null);
 
 export function BgmProvider({ children }: { children: ReactNode }) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const battleBgmRef = useRef<HTMLAudioElement | null>(null);
+  const questBattleActiveRef = useRef(false);
+  const questBompFallbackTimerRef = useRef<number | null>(null);
+  const questBompEndedHandlerRef = useRef<(() => void) | null>(null);
   const successSfxRef = useRef<HTMLAudioElement | null>(null);
   const failSfxRef = useRef<HTMLAudioElement | null>(null);
   const laughSfxRef = useRef<HTMLAudioElement | null>(null);
@@ -67,6 +77,19 @@ export function BgmProvider({ children }: { children: ReactNode }) {
       cancelAnimationFrame(bgmFadeFrameRef.current);
       bgmFadeFrameRef.current = null;
     }
+  }, []);
+
+  const clearQuestBompHandlers = useCallback(() => {
+    if (questBompFallbackTimerRef.current !== null) {
+      window.clearTimeout(questBompFallbackTimerRef.current);
+      questBompFallbackTimerRef.current = null;
+    }
+    const bomp = bompSfxRef.current;
+    const onEnded = questBompEndedHandlerRef.current;
+    if (bomp && onEnded) {
+      bomp.removeEventListener('ended', onEnded);
+    }
+    questBompEndedHandlerRef.current = null;
   }, []);
 
   const clearDuckRestore = useCallback(() => {
@@ -114,6 +137,12 @@ export function BgmProvider({ children }: { children: ReactNode }) {
     audioRef.current = bgm;
     const detachBgm = attachBgmErrorHandler(bgm, () => setLoadFailed(true));
 
+    const battleBgm = createBattleBgmAudio();
+    battleBgmRef.current = battleBgm;
+    const onBattleError = () =>
+      console.warn('[audio] 戰鬥 BGM 載入失敗：/music/battle.mp3');
+    battleBgm.addEventListener('error', onBattleError);
+
     const successSfx = createSfxAudio('success');
     const failSfx = createSfxAudio('fail');
     const laughSfx = createSfxAudio('laugh');
@@ -141,8 +170,14 @@ export function BgmProvider({ children }: { children: ReactNode }) {
     winAudio.addEventListener('error', onWinError);
 
     return () => {
+      clearQuestBompHandlers();
       clearDuckRestore();
       detachBgm();
+      battleBgm.removeEventListener('error', onBattleError);
+      battleBgm.pause();
+      battleBgm.src = '';
+      battleBgmRef.current = null;
+      questBattleActiveRef.current = false;
       detachSuccess();
       detachFail();
       detachLaugh();
@@ -181,19 +216,74 @@ export function BgmProvider({ children }: { children: ReactNode }) {
     setEnabled((prev) => !prev);
   }, [loadFailed, clearDuckRestore, restoreBgmVolume]);
 
+  const enterQuestBattleBgm = useCallback(() => {
+    if (questBattleActiveRef.current) return;
+    questBattleActiveRef.current = true;
+    clearDuckRestore();
+
+    const bgm = audioRef.current;
+    const battle = battleBgmRef.current;
+    if (bgm && !loadFailed) {
+      bgm.pause();
+    }
+    if (!enabled || !battle) return;
+
+    battle.volume = DEFAULT_BATTLE_BGM_VOLUME;
+    battle.currentTime = 0;
+    void battle.play().catch((error) => {
+      console.warn('[audio] 戰鬥 BGM 播放失敗：', error);
+    });
+  }, [enabled, loadFailed, clearDuckRestore]);
+
+  const exitQuestBattleBgm = useCallback(() => {
+    if (!questBattleActiveRef.current) return;
+    questBattleActiveRef.current = false;
+
+    const battle = battleBgmRef.current;
+    if (battle) {
+      battle.pause();
+      battle.currentTime = 0;
+    }
+
+    if (!enabled || !unlocked || loadFailed || victoryMusicStartedRef.current) {
+      return;
+    }
+
+    const bgm = audioRef.current;
+    if (!bgm) return;
+    bgm.volume = DEFAULT_BGM_VOLUME;
+    void safePlayBgm(bgm);
+  }, [enabled, unlocked, loadFailed]);
+
+  const onQuestDialogOpened = useCallback(() => {
+    clearQuestBompHandlers();
+    clearDuckRestore();
+    enterQuestBattleBgm();
+  }, [clearQuestBompHandlers, clearDuckRestore, enterQuestBattleBgm]);
+
+  const onQuestDialogClosed = useCallback(() => {
+    clearQuestBompHandlers();
+    exitQuestBattleBgm();
+  }, [clearQuestBompHandlers, exitQuestBattleBgm]);
+
   useEffect(() => {
     if (!unlocked) return;
     const bgm = audioRef.current;
     if (!bgm || loadFailed) return;
 
     if (enabled) {
-      bgm.volume = DEFAULT_BGM_VOLUME;
-      void safePlayBgm(bgm);
+      if (!questBattleActiveRef.current && !victoryMusicStartedRef.current) {
+        bgm.volume = DEFAULT_BGM_VOLUME;
+        void safePlayBgm(bgm);
+      }
     } else {
       clearDuckRestore();
+      clearQuestBompHandlers();
       bgm.pause();
+      battleBgmRef.current?.pause();
+      questBattleActiveRef.current = false;
     }
-  }, [enabled, unlocked, loadFailed, clearDuckRestore]);
+  }, [enabled, unlocked, loadFailed, clearDuckRestore, clearQuestBompHandlers]);
 
   const playSfx = useCallback(
     (type: SfxType) => {
@@ -257,7 +347,10 @@ export function BgmProvider({ children }: { children: ReactNode }) {
   const beginVictoryMusic = useCallback(() => {
     if (victoryMusicStartedRef.current) return;
     victoryMusicStartedRef.current = true;
+    clearQuestBompHandlers();
     clearDuckRestore();
+    questBattleActiveRef.current = false;
+    battleBgmRef.current?.pause();
 
     const bgm = audioRef.current;
     const win = winAudioRef.current;
@@ -342,6 +435,8 @@ export function BgmProvider({ children }: { children: ReactNode }) {
       playRatUnlockBomp,
       beginVictoryMusic,
       stopVictoryMusic,
+      onQuestDialogOpened,
+      onQuestDialogClosed,
     }),
     [
       enabled,
@@ -354,6 +449,8 @@ export function BgmProvider({ children }: { children: ReactNode }) {
       playRatUnlockBomp,
       beginVictoryMusic,
       stopVictoryMusic,
+      onQuestDialogOpened,
+      onQuestDialogClosed,
     ],
   );
 

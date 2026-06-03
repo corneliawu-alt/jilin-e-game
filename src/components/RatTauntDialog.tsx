@@ -56,7 +56,7 @@ export default function RatTauntDialog({ message, onClose }: RatTauntDialogProps
               }}
               className="px-4 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-black text-xs sm:text-sm transition-colors"
             >
-              我知道了 (Space)
+              我知道了 (空白鍵)
             </button>
           </div>
         }

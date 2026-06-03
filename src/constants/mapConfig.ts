@@ -3,11 +3,11 @@ export const GRID_HEIGHT = 30;
 export const TILE_SIZE = 32;
 /** 玩家起始座標由 tilemap.getPlayerSpawnPoint() 動態決定（主城門正上方幹道） */
 
-/** NPC 散落在店門口、噴水池旁等 */
+/** NPC 固定於三區地標建築門口（餐廳／診所／倉庫） */
 export const NPC_GRID_POSITIONS: Record<'Chef' | 'Doctor' | 'Captain', { x: number; y: number }> = {
-  Chef: { x: 7, y: 10 },
-  Doctor: { x: 22, y: 12 },
-  Captain: { x: 34, y: 27 },
+  Chef: { x: 6, y: 8 },
+  Doctor: { x: 21, y: 9 },
+  Captain: { x: 30, y: 23 },
 };
 
 export const MAP_PIXEL_WIDTH = GRID_WIDTH * TILE_SIZE;

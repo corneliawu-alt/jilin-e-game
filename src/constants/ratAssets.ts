@@ -4,8 +4,23 @@ import {
   type SpriteDirection,
 } from './characterAssets';
 
-/** 任務老鼠行走圖（public/enemyrat/rat1.png，4 欄 × 2 列） */
+/** 任務老鼠外觀編號（對應 public/enemyrat/rat1~3.png） */
+export type RatType = 1 | 2 | 3;
+
+export const RAT_TYPE_COUNT = 3;
+
+/** @deprecated 請改用 getRatSpriteSrc(ratType) */
 export const RAT_SPRITE_SRC = '/enemyrat/rat1.png';
+
+/** 為每隻任務鼠隨機指派 1～3 號外觀 */
+export function rollRandomRatType(): RatType {
+  return (Math.floor(Math.random() * RAT_TYPE_COUNT) + 1) as RatType;
+}
+
+export function getRatSpriteSrc(ratType: RatType = 1): string {
+  const n = ratType >= 1 && ratType <= RAT_TYPE_COUNT ? ratType : 1;
+  return `/enemyrat/rat${n}.png`;
+}
 
 /** 欄位順序：下、左、右、上（與 RPG Maker / 本專案行走圖一致） */
 export const RAT_SPRITE_COL_ORDER: readonly SpriteDirection[] = [

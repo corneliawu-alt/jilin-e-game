@@ -31,6 +31,7 @@ import {
   type RatPositionsMap,
 } from '../constants/ratWander';
 import PlayerMapSprite from './PlayerMapSprite';
+import RatCatchNetIndicator from './RatCatchNetIndicator';
 import {
   formatPlayerNameTag,
   getPlayerCharacter,
@@ -53,7 +54,7 @@ interface GameMapProps {
   ratsBurst: boolean;
   collectedTreasureIds: ReadonlySet<string>;
   radarTarget: { x: number; y: number } | null;
-  /** 玩家相鄰時高亮該任務鼠並顯示空白鍵提示 */
+  /** 互動範圍內高亮任務鼠並顯示 Enter 抓鼠提示 */
   highlightQuestId: number | null;
   /** 對話／答題中鎖定面向與行走動畫 */
   freezeEntityFacing: boolean;
@@ -97,6 +98,7 @@ export default function GameMap({
 }: GameMapProps) {
   const viewportRef = useRef<HTMLDivElement>(null);
   const [viewportSize, setViewportSize] = useState({ width: 896, height: 600 });
+  const [hoveredRatQuestId, setHoveredRatQuestId] = useState<number | null>(null);
 
   useEffect(() => {
     const el = viewportRef.current;
@@ -182,6 +184,7 @@ export default function GameMap({
           spawnX: p.x,
           spawnY: p.y,
           stance: getRatDefaultFacing(p.questionId),
+          ratType: p.ratType,
         };
       })
       .filter(
@@ -276,8 +279,9 @@ export default function GameMap({
               const isBoss = rat.questId === 10 && completedQuestIds.size >= 9;
               const inRange = isWithinRatInteractionRange(playerPos, rat);
               const frozen = isRatWanderFrozenForPlayer(rat, playerPos);
-              const showInteractHint = highlightQuestId === rat.questId;
-              const showAlert = inRange && !showInteractHint;
+              const isAdjacent = highlightQuestId === rat.questId;
+              const showCatchNet = inRange;
+              const ratHovered = hoveredRatQuestId === rat.questId;
               const ratFacing = getRatDisplayFacing(rat, playerPos);
               return (
               <motion.div
@@ -305,7 +309,10 @@ export default function GameMap({
                   role="button"
                   tabIndex={0}
                   className={`relative mb-0.5 flex flex-col items-center cursor-pointer
-                    ${isBoss ? 'scale-110 origin-bottom' : ''}`}
+                    ${isBoss ? 'scale-110 origin-bottom' : ''}
+                    ${ratHovered ? 'z-30' : ''}`}
+                  onMouseEnter={() => setHoveredRatQuestId(rat.questId)}
+                  onMouseLeave={() => setHoveredRatQuestId(null)}
                   onClick={(e) => {
                     e.stopPropagation();
                     onQuestRatClick?.(questPoint);
@@ -316,6 +323,7 @@ export default function GameMap({
                       onQuestRatClick?.(questPoint);
                     }
                   }}
+                  aria-label={showCatchNet ? '可抓捕的變異老鼠' : '變異老鼠'}
                 >
                   <EntityGroundShadow wide />
                   {isBoss && (
@@ -324,32 +332,20 @@ export default function GameMap({
                       aria-hidden
                     />
                   )}
-                  {showInteractHint && (
+                  {showCatchNet && (
                     <motion.div
-                      initial={{ opacity: 0, y: 4 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      className="absolute -top-7 left-1/2 -translate-x-1/2 z-40 flex flex-col items-center pointer-events-none"
+                      initial={{ opacity: 0, y: 6, scale: 0.85 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      className="absolute -top-[2.75rem] left-1/2 -translate-x-1/2 z-40"
                     >
-                      <span className="text-base leading-none drop-shadow-lg">💬</span>
-                      <span
-                        className="mt-0.5 px-1.5 py-0.5 rounded-md bg-slate-900/90 border border-amber-400/70
-                          text-[8px] font-black text-amber-100 whitespace-nowrap shadow-md"
-                      >
-                        空白鍵
-                      </span>
+                      <RatCatchNetIndicator
+                        hovered={ratHovered}
+                        adjacent={isAdjacent}
+                      />
                     </motion.div>
                   )}
-                  {showAlert && (
-                    <span
-                      className="absolute -top-0.5 -right-0.5 z-30 w-3.5 h-3.5 bg-rose-500 rounded-full
-                        text-[9px] text-white font-black flex items-center justify-center
-                        animate-pulse drop-shadow-md border border-rose-300 pointer-events-none"
-                      aria-label="可互動"
-                    >
-                      !
-                    </span>
-                  )}
                   <RatSprite
+                    ratType={rat.ratType}
                     variant={isBoss ? 'boss' : 'normal'}
                     direction={ratFacing}
                     animateWalk={!frozen && !freezeEntityFacing}

@@ -58,7 +58,7 @@ export default function App() {
           gameState === 'PLAYING' || gameState === 'INTRO'
             ? GAME_SHELL
             : gameState === 'LOGIN'
-              ? 'max-w-4xl min-h-[min(92vh,720px)] rounded-3xl border border-amber-200/80 login-shell shadow-xl shadow-amber-100/60'
+              ? 'max-w-4xl min-h-[min(92vh,880px)] h-[min(92vh,880px)] rounded-2xl border-2 border-amber-700/50 login-shell'
               : 'max-w-2xl aspect-[4/3] bg-white rounded-3xl border-4 border-amber-100'
         }`}
       >
