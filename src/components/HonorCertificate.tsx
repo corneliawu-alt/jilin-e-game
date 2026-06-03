@@ -6,7 +6,6 @@ import {
   formatElapsedTime,
   formatElapsedTimeMMSS,
   getHonorTitle,
-  PLAYER_ROLE,
 } from '../constants/gameData';
 import { downloadCertificateAsJpg } from '../lib/downloadCertificate';
 import ConfettiOverlay from './ConfettiOverlay';
@@ -33,6 +32,7 @@ export default function HonorCertificate({
   const timeLabel = formatElapsedTime(stats.elapsedSeconds);
   const timeMmSs = formatElapsedTimeMMSS(stats.elapsedSeconds);
   const [downloading, setDownloading] = useState(false);
+  const [downloadMessage, setDownloadMessage] = useState<string | null>(null);
 
   const statItems: StatItem[] = [
     { label: '總積分', value: `${stats.score} / 100`, accent: true },
@@ -46,10 +46,24 @@ export default function HonorCertificate({
   const handleDownload = useCallback(async () => {
     if (downloading) return;
     setDownloading(true);
+    setDownloadMessage(null);
     try {
-      await downloadCertificateAsJpg();
-    } catch (error) {
-      console.warn('[Certificate] 下載失敗：', error);
+      const result = await downloadCertificateAsJpg();
+      if (!result.ok) {
+        setDownloadMessage(result.error);
+        return;
+      }
+      if (result.method === 'preview') {
+        setDownloadMessage(
+          '瀏覽器已開啟獎狀圖片，請在圖片上按右鍵選擇「另存圖片」。',
+        );
+        return;
+      }
+      if (result.method === 'save-picker') {
+        setDownloadMessage('獎狀已儲存至您選擇的位置！');
+        return;
+      }
+      setDownloadMessage('獎狀已開始下載，請查看瀏覽器下載列。');
     } finally {
       setDownloading(false);
     }
@@ -67,14 +81,12 @@ export default function HonorCertificate({
     >
       <ConfettiOverlay />
 
-      <motion.div
-        initial={{ scale: 0.88, y: 24 }}
-        animate={{ scale: 1, y: 0 }}
-        transition={{ type: 'spring', stiffness: 260, damping: 22 }}
-        className="relative z-10 w-full max-w-lg my-auto flex flex-col items-stretch gap-4"
-      >
-        <div
+      <div className="relative z-10 w-full max-w-lg my-auto flex flex-col items-stretch gap-4">
+        <motion.div
           id="certificate-node"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.45 }}
           className="relative rounded-2xl border-8 border-double border-amber-500
             bg-[#fdfbf7]
             shadow-[0_12px_40px_rgba(180,120,40,0.22),inset_0_0_60px_rgba(251,191,36,0.08)]
@@ -136,6 +148,7 @@ export default function HonorCertificate({
           </div>
 
           <p
+            data-cert-honor-title
             className="text-xl sm:text-2xl md:text-3xl font-black leading-tight
               text-transparent bg-clip-text
               bg-linear-to-r from-amber-600 via-orange-500 to-amber-700
@@ -146,7 +159,7 @@ export default function HonorCertificate({
           <p className="text-[10px] text-amber-700/80 font-bold mt-2 tracking-widest">
             — 最終稱號 —
           </p>
-        </div>
+        </motion.div>
 
         <div className="flex flex-col gap-2.5 px-1 sm:px-2">
           <button
@@ -168,6 +181,23 @@ export default function HonorCertificate({
             )}
             💾 下載獎狀 (JPG)
           </button>
+
+          {downloadMessage && (
+            <p
+              className={`text-center text-xs font-bold px-2 ${
+                downloadMessage.includes('取消') ||
+                downloadMessage.includes('找不到') ||
+                downloadMessage.includes('無法') ||
+                downloadMessage.includes('空白') ||
+                downloadMessage.includes('錯誤')
+                  ? 'text-rose-700'
+                  : 'text-emerald-800'
+              }`}
+              role="status"
+            >
+              {downloadMessage}
+            </p>
+          )}
 
           <div className="grid grid-cols-2 gap-3">
             <button
@@ -192,7 +222,7 @@ export default function HonorCertificate({
             </button>
           </div>
         </div>
-      </motion.div>
+      </div>
     </motion.div>
   );
 }

@@ -422,6 +422,11 @@ export type QuestQuestion = {
   targetNPC: TargetNPC;
 };
 
+/** 移除選項內文開頭的 (A)～(D)，避免與 UI 標籤重複顯示 */
+export function stripOptionLabelPrefix(text: string): string {
+  return text.replace(/^\([A-Da-d]\)\s*/, '').trim();
+}
+
 /** 與文件一致的題目型別別名 */
 export type Question = QuestQuestion;
 

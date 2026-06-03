@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { AnimatePresence } from 'motion/react';
-import { QuestQuestion } from '../constants/gameData';
+import { QuestQuestion, stripOptionLabelPrefix } from '../constants/gameData';
 import RpgDialogBox, { optionKeyToIndex, QUIZ_OPTION_KEYS } from './RpgDialogBox';
 const OPTION_LABELS = ['A', 'B', 'C', 'D'] as const;
 
@@ -197,7 +197,9 @@ export default function QuestQuizDialog({
                     <span className="block text-[10px] text-amber-200/70 font-bold mb-0.5">
                       按 {keyHint} 鍵
                     </span>
-                    <span className="text-white text-xs sm:text-sm leading-snug">{option}</span>
+                    <span className="text-white text-xs sm:text-sm leading-snug">
+                      {stripOptionLabelPrefix(option)}
+                    </span>
                   </span>
                 </button>
               );
@@ -222,7 +224,9 @@ export default function QuestQuizDialog({
                   className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg border text-xs sm:text-sm transition-colors duration-300 ${boxClass}`}
                 >
                   <span className="font-black">({label})</span>
-                  <span className="truncate max-w-[200px] sm:max-w-none">{option}</span>
+                  <span className="truncate max-w-[200px] sm:max-w-none">
+                    {stripOptionLabelPrefix(option)}
+                  </span>
                   {isAnswer && <span className="text-emerald-300 font-bold">✓</span>}
                   {wasPicked && !isAnswer && <span className="text-rose-300 font-bold">✗</span>}
                 </div>

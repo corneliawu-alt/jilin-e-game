@@ -33,11 +33,14 @@ npm run dev
 
 完成 10 項任務、加冕劇情結束後，背景 POST 至 Google Apps Script，寫入試算表。
 
-**傳送欄位：** 班級、座號、姓名、總積分（`totalScore`）、完成時間（`elapsedTime`，MM:SS）
+**試算表標題列（第一列）：** `Timestamp` | `Class` | `Seat` | `Name` | `Score` | `Time`
 
-1. 建立試算表與 GAS，參考 [docs/gas-score-submit.example.js](docs/gas-score-submit.example.js)
-2. 部署為「網路應用程式」（存取：任何人）
-3. `.env` 設定：
+**傳送欄位：** 班級、座號、姓名、總積分、完成時間（MM:SS）
+
+1. 在**要寫入的那份試算表**內開啟 Apps Script（擴充功能 → Apps Script），貼上 [docs/gas-score-submit.example.js](docs/gas-score-submit.example.js) 的 `doPost`
+2. 部署為「網路應用程式」（執行身分：我；存取：**任何人**）
+3. 修改 GAS 後須「管理部署 → 編輯 → 新版本」才會生效
+4. `.env` 設定：
 
 ```env
 VITE_GOOGLE_FORM_SCRIPT_URL=https://script.google.com/macros/s/你的部署ID/exec
@@ -45,7 +48,18 @@ VITE_GOOGLE_FORM_SCRIPT_URL=https://script.google.com/macros/s/你的部署ID/ex
 
 4. Vercel 部署時在 Environment Variables 加入同一變數
 
-未設定 URL 時遊戲可正常遊玩，成績僅顯示於獎狀（可選本機 `localStorage` 備份）。
+未設定 URL 時遊戲可正常遊玩；本機排行榜仍會寫入 `localStorage`，但**不會**進 Google 試算表。
+
+### 排行榜有資料、試算表卻是空的？
+
+| 可能原因 | 處理方式 |
+|----------|----------|
+| Vercel 未設定環境變數 | 到 Vercel → Settings → Environment Variables 加入 `VITE_GOOGLE_FORM_SCRIPT_URL`，重新 Deploy |
+| GAS 未綁定該試算表 | 必須從試算表內開啟 Apps Script，不要用獨立空白專案 |
+| 欄位順序不符 | GAS `appendRow` 順序須為：時間戳記、Class、Seat、Name、Score、Time（見範例檔） |
+| 部署版本過舊 | GAS 管理部署 → 新版本 → 再測試 |
+
+通關後按 F12 → Console，若出現 `[ScoreSubmit] Google 試算表上傳失敗` 代表前端有打到 GAS 但遭拒絕，請對照 GAS 執行紀錄。
 
 架構說明：[docs/GAME_ARCHITECTURE.md](docs/GAME_ARCHITECTURE.md)
 
