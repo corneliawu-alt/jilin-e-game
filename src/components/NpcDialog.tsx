@@ -81,19 +81,33 @@ export default function NpcDialog({
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (effectiveMode === 'menu') {
-        if (e.key === 'ArrowUp' || e.key === '1') {
+        const key = e.key.toLowerCase();
+
+        if (key === 'a') {
+          e.preventDefault();
+          e.stopPropagation();
+          onChooseReview();
+          return;
+        }
+        if (key === 'b') {
+          e.preventDefault();
+          e.stopPropagation();
+          onChooseLeave();
+          return;
+        }
+        if (e.key === 'ArrowUp' || key === '1') {
           e.preventDefault();
           e.stopPropagation();
           setMenuFocus(0);
           return;
         }
-        if (e.key === 'ArrowDown' || e.key === '2') {
+        if (e.key === 'ArrowDown' || key === '2') {
           e.preventDefault();
           e.stopPropagation();
           setMenuFocus(1);
           return;
         }
-        if (e.key === ' ' || e.key === 'Enter') {
+        if (key === ' ' || key === 'enter') {
           e.preventDefault();
           e.stopPropagation();
           confirmMenuChoice();
@@ -122,6 +136,8 @@ export default function NpcDialog({
     advanceReviewOrClue,
     advanceFarewell,
     confirmMenuChoice,
+    onChooseReview,
+    onChooseLeave,
   ]);
 
   const speakerBadge = isClueMode ? (
@@ -166,7 +182,8 @@ export default function NpcDialog({
         portrait={portrait}
         footer={
           <p className="text-[10px] text-amber-200/70">
-            ↑↓ 或 1／2 切換 • 空白鍵確認
+            按 <span className="text-amber-300 font-bold">A</span>／
+            <span className="text-amber-300 font-bold">B</span> 直接選擇 • ↑↓ 切換 • 空白鍵確認
           </p>
         }
       >
@@ -180,6 +197,7 @@ export default function NpcDialog({
             onClick={onChooseReview}
             onMouseEnter={() => setMenuFocus(0)}
           >
+            <span className="block text-[10px] text-amber-200/70 font-bold mb-0.5">按 A 鍵</span>
             A. 我想重點複習
           </button>
           <button
@@ -188,6 +206,7 @@ export default function NpcDialog({
             onClick={onChooseLeave}
             onMouseEnter={() => setMenuFocus(1)}
           >
+            <span className="block text-[10px] text-amber-200/70 font-bold mb-0.5">按 B 鍵</span>
             B. 我接下來該做什麼？
           </button>
         </div>
