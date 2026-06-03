@@ -1,7 +1,9 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useState } from 'react';
 import { motion } from 'motion/react';
-import { Crown, Timer } from 'lucide-react';
-import { getTopSpeedrunEntries } from '../lib/leaderboard';
+import { Crown, Loader2, Timer } from 'lucide-react';
+import { fetchTopSpeedrunFromGoogle } from '../lib/fetchGoogleLeaderboard';
+import type { LeaderboardEntry } from '../lib/leaderboard';
+import { isGoogleFormConfigured } from '../lib/submitGoogleForm';
 
 const MEDALS = ['🥇', '🥈', '🥉'] as const;
 
@@ -12,7 +14,47 @@ const RANK_STYLES = [
 ] as const;
 
 export default function LoginLeaderboard() {
-  const entries = useMemo(() => getTopSpeedrunEntries(6), []);
+  const [entries, setEntries] = useState<LeaderboardEntry[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadFailed, setLoadFailed] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const load = async () => {
+      if (!isGoogleFormConfigured()) {
+        if (!cancelled) {
+          setEntries([]);
+          setLoadFailed(false);
+          setLoading(false);
+        }
+        return;
+      }
+
+      setLoading(true);
+      setLoadFailed(false);
+
+      try {
+        const top = await fetchTopSpeedrunFromGoogle(6);
+        if (!cancelled) {
+          setEntries(top);
+          setLoadFailed(false);
+        }
+      } catch {
+        if (!cancelled) {
+          setEntries([]);
+          setLoadFailed(true);
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   return (
     <section className="flex flex-col min-h-0 flex-1" aria-label="最速通關排行榜">
@@ -21,7 +63,21 @@ export default function LoginLeaderboard() {
       </header>
 
       <div className="flex-1 min-h-0 overflow-y-auto login-rpg-scroll-inner pr-0.5">
-        {entries.length === 0 ? (
+        {loading ? (
+          <div
+            className="login-leaderboard-empty min-h-[100px] sm:min-h-[116px]
+              flex flex-col items-center justify-center text-center
+              rounded-lg border border-dashed border-amber-600/35
+              bg-black/25 px-4 py-4"
+          >
+            <Loader2
+              size={26}
+              className="text-amber-400/70 mb-2 animate-spin"
+              aria-hidden
+            />
+            <p className="text-sm text-amber-100/75 font-medium">載入排行榜中…</p>
+          </div>
+        ) : entries.length === 0 ? (
           <div
             className="login-leaderboard-empty min-h-[100px] sm:min-h-[116px]
               flex flex-col items-center justify-center text-center
@@ -30,9 +86,15 @@ export default function LoginLeaderboard() {
           >
             <Crown size={26} className="text-amber-500/50 mb-2" aria-hidden />
             <p className="text-sm sm:text-[0.9375rem] font-semibold text-amber-100/85 leading-relaxed">
-              尚未有稽查員完成挑戰...
-              <br />
-              歡迎挑戰！成為第一位通關的特級稽查員吧！
+              {loadFailed
+                ? '無法載入排行榜，請稍後再試。'
+                : (
+                  <>
+                    尚未有稽查員完成挑戰...
+                    <br />
+                    歡迎挑戰！成為第一位通關的特級稽查員吧！
+                  </>
+                )}
             </p>
           </div>
         ) : (
@@ -44,7 +106,7 @@ export default function LoginLeaderboard() {
 
               return (
                 <motion.li
-                  key={`${entry.savedAt}-${entry.name}-${entry.rank}`}
+                  key={`${entry.rank}-${entry.classId}-${entry.seatNumber}-${entry.name}`}
                   initial={{ opacity: 0, x: -10 }}
                   animate={{ opacity: 1, x: 0 }}
                   transition={{ delay: index * 0.05 }}

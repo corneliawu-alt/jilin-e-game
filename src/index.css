@@ -899,7 +899,7 @@
   }
 }
 
-/* 中層向左巡迴（廚師鼠 rat2） */
+/* 中層向左巡迴（白色廚師鼠 rat2） */
 @keyframes login-rat-crawl-left {
   0% {
     left: 102%;
@@ -953,21 +953,10 @@
   animation: login-rat-crawl 16s linear infinite;
 }
 
-.login-decor-rat--peek-br {
-  bottom: 18%;
-  right: 6px;
-  transform: rotate(6deg);
-  transform-origin: center bottom;
-}
-
 @media (max-width: 640px) {
   .login-decor-rat--crawl-mid {
     top: 58%;
     opacity: 0.9;
-  }
-
-  .login-decor-rat--peek-br {
-    display: none;
   }
 }
 

@@ -48,7 +48,13 @@ VITE_GOOGLE_FORM_SCRIPT_URL=https://script.google.com/macros/s/你的部署ID/ex
 
 4. Vercel 部署時在 Environment Variables 加入同一變數
 
-未設定 URL 時遊戲可正常遊玩；本機排行榜仍會寫入 `localStorage`，但**不會**進 Google 試算表。
+未設定 URL 時遊戲可正常遊玩，但成績**不會**上傳試算表，登入頁排行榜也無法顯示資料。
+
+### 登入頁排行榜
+
+- 僅從 Google 試算表讀取（`GET ?action=leaderboard&limit=6`），顯示全體最快前六名。
+- GAS 需使用 `docs/gas-score-submit.example.js` 內含 `getLeaderboard` 的版本，部署後請**更新網路應用程式版本**。
+- 測試：瀏覽器開啟 `你的/exec?action=leaderboard&limit=6` 應看到 JSON `entries`。
 
 ### 排行榜有資料、試算表卻是空的？
 

@@ -83,7 +83,7 @@ LOGIN → INTRO → PLAYING
 
 ## 9. 登入與排行榜
 
-- RPG 卷軸版面 `login-rpg-scroll`、localStorage 前 6 名（`leaderboard.ts`）
+- RPG 卷軸版面 `login-rpg-scroll`、Google 試算表前 6 名（`fetchGoogleLeaderboard.ts` + GAS `?action=leaderboard`）
 - 裝飾老鼠 `LoginDecorRats`
 
 ## 10. 成績上傳（Google 試算表，無 Firebase）
@@ -101,7 +101,7 @@ LOGIN → INTRO → PLAYING
 
 環境變數：`VITE_GOOGLE_FORM_SCRIPT_URL`  
 範例 GAS：`docs/gas-score-submit.example.js`  
-同時寫入 localStorage 排行榜。
+登入頁排行榜由 GAS GET 讀取試算表，不再使用 localStorage。
 
 ## 11. 主要檔案
 

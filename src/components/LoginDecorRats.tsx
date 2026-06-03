@@ -34,13 +34,6 @@ const DECOR_RATS: DecorRat[] = [
     animateWalk: true,
     spriteClass: 'w-11 h-11 sm:w-12 sm:h-12',
   },
-  {
-    ratType: 1,
-    direction: 'down',
-    positionClass: 'login-decor-rat login-decor-rat--peek-br',
-    animClass: 'login-rat-float-y login-rat-float-y--delayed',
-    spriteClass: 'w-10 h-10 sm:w-12 sm:h-12',
-  },
 ];
 
 /** 登入頁純裝飾老鼠（精靈圖裁切 + CSS 動畫） */

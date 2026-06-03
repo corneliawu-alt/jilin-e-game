@@ -3,6 +3,7 @@ import { motion } from 'motion/react';
 import { UserInfo } from '../App';
 import { GameResultStats } from './Game';
 import { submitGameScore, type GameScoreSubmitResult } from '../lib/submitGameScore';
+import { isGoogleFormConfigured } from '../lib/submitGoogleForm';
 import { RefreshCcw, Share2, CheckCircle, Loader2, Star, Award } from 'lucide-react';
 import { PLAYER_ROLE } from '../constants/gameData';
 
@@ -41,7 +42,7 @@ export default function Result({
         if (!cancelled) setSaveResult(result);
       } catch (error) {
         console.error('Error saving record:', error);
-        if (!cancelled) setSaveResult({ googleForm: false, leaderboardSaved: false });
+        if (!cancelled) setSaveResult({ googleForm: false });
       } finally {
         if (!cancelled) setIsSaving(false);
       }
@@ -123,10 +124,10 @@ export default function Result({
           <CheckCircle size={18} />
           成績已上傳至 Google 試算表
         </div>
-      ) : saveResult?.leaderboardSaved ? (
+      ) : !isGoogleFormConfigured() ? (
         <div className="flex items-center gap-2 text-amber-600 mb-6 font-bold bg-amber-50 px-3 py-2 rounded-full border border-amber-100 text-sm">
           <CheckCircle size={18} />
-          成績已登錄本機排行榜
+          遊戲完成（未設定 Google 試算表上傳）
         </div>
       ) : (
         <div className="text-rose-500 mb-6 font-bold text-sm">儲存失敗，請通知老師</div>
