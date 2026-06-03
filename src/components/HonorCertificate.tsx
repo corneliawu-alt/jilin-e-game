@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useCallback, useState } from 'react';
 import { motion } from 'motion/react';
 import type { UserInfo } from '../App';
 import type { GameResultStats } from './Game';
@@ -8,40 +8,59 @@ import {
   getHonorTitle,
   PLAYER_ROLE,
 } from '../constants/gameData';
-import type { GameScoreSubmitResult } from '../lib/submitGameScore';
-import { isGoogleFormConfigured } from '../lib/submitGoogleForm';
+import { downloadCertificateAsJpg } from '../lib/downloadCertificate';
 import ConfettiOverlay from './ConfettiOverlay';
-import { Award, Home, RefreshCcw, Loader2, CheckCircle, CloudUpload, HardDrive } from 'lucide-react';
+import { Award, Home, RefreshCcw, Download, Loader2 } from 'lucide-react';
 
 interface HonorCertificateProps {
   userInfo: UserInfo;
   stats: GameResultStats;
   preventionScore: number;
-  scoreSubmitLoading: boolean;
-  scoreSubmitResult: GameScoreSubmitResult | null;
   onPlayAgain: () => void;
   onExitHome: () => void;
 }
+
+type StatItem = { label: string; value: string; accent?: boolean };
 
 export default function HonorCertificate({
   userInfo,
   stats,
   preventionScore,
-  scoreSubmitLoading,
-  scoreSubmitResult,
   onPlayAgain,
   onExitHome,
 }: HonorCertificateProps) {
   const honorTitle = getHonorTitle(preventionScore, stats.score);
   const timeLabel = formatElapsedTime(stats.elapsedSeconds);
   const timeMmSs = formatElapsedTimeMMSS(stats.elapsedSeconds);
+  const [downloading, setDownloading] = useState(false);
+
+  const statItems: StatItem[] = [
+    { label: '總積分', value: `${stats.score} / 100`, accent: true },
+    { label: '完成時間', value: timeMmSs },
+    { label: '遊戲耗時', value: timeLabel },
+    { label: '防疫積分', value: String(preventionScore), accent: true },
+    { label: '通關星級', value: '★'.repeat(stats.stars) + '☆'.repeat(3 - stats.stars) },
+    { label: '任務完成', value: `${stats.completedQuests} / 10` },
+  ];
+
+  const handleDownload = useCallback(async () => {
+    if (downloading) return;
+    setDownloading(true);
+    try {
+      await downloadCertificateAsJpg();
+    } catch (error) {
+      console.warn('[Certificate] 下載失敗：', error);
+    } finally {
+      setDownloading(false);
+    }
+  }, [downloading]);
 
   return (
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       className="fixed inset-0 z-[290] flex items-center justify-center p-3 sm:p-6 overflow-y-auto
-        bg-linear-to-br from-amber-100 via-yellow-50 to-orange-100"
+        bg-linear-to-br from-amber-100/90 via-[#f5efe6] to-orange-100/90"
       role="dialog"
       aria-modal="true"
       aria-label="榮譽獎狀結算"
@@ -52,115 +71,111 @@ export default function HonorCertificate({
         initial={{ scale: 0.88, y: 24 }}
         animate={{ scale: 1, y: 0 }}
         transition={{ type: 'spring', stiffness: 260, damping: 22 }}
-        className="relative z-10 w-full max-w-md my-auto"
+        className="relative z-10 w-full max-w-lg my-auto flex flex-col items-stretch gap-4"
       >
         <div
-          className="relative rounded-2xl border-4 border-double border-amber-600/90
-            bg-linear-to-b from-amber-50 via-white to-amber-50
-            shadow-[0_0_48px_rgba(217,119,6,0.35),inset_0_0_40px_rgba(251,191,36,0.12)]
-            px-6 py-8 sm:px-8 sm:py-10 text-center"
+          id="certificate-node"
+          className="relative rounded-2xl border-8 border-double border-amber-500
+            bg-[#fdfbf7]
+            shadow-[0_12px_40px_rgba(180,120,40,0.22),inset_0_0_60px_rgba(251,191,36,0.08)]
+            px-5 py-8 sm:px-8 sm:py-10 text-center"
         >
           <div
             className="absolute -top-5 left-1/2 -translate-x-1/2 w-14 h-14 rounded-full
               bg-linear-to-br from-amber-400 to-orange-500 flex items-center justify-center
-              shadow-lg border-2 border-amber-200"
+              shadow-lg border-2 border-amber-300"
           >
             <Award size={32} className="text-white drop-shadow" />
           </div>
 
-          <p className="text-[10px] font-black tracking-[0.35em] text-amber-700/80 uppercase mt-4 mb-1">
+          <p className="text-[10px] font-black tracking-[0.35em] text-amber-800/70 uppercase mt-4 mb-3">
             吉林小鎮防疫總部
           </p>
-          <h2 className="text-xl sm:text-2xl font-black text-amber-950 leading-tight mb-1">
+
+          <p
+            className="text-sm sm:text-base font-bold leading-relaxed mb-3
+              text-[#2d4a3e] drop-shadow-[0_1px_0_rgba(255,255,255,0.6)]"
+          >
+            恭喜{' '}
+            <span className="font-black text-[#3d2b1f]">{userInfo.classId} 班</span>{' '}
+            <span className="font-black text-[#3d2b1f]">{userInfo.seatNumber} 號</span>{' '}
+            <span className="font-black text-[#1a3d32]">{userInfo.name}</span>{' '}
+            榮獲
+          </p>
+
+          <h2 className="text-xl sm:text-2xl font-black text-[#3d2b1f] leading-tight mb-0.5">
             特級衛生稽查員
           </h2>
-          <p className="text-sm font-bold text-amber-700 mb-5">榮 譽 獎 狀</p>
-
-          <div className="space-y-2 text-sm text-amber-950/90 mb-4 border-y border-amber-200/80 py-4">
-            <p>
-              <span className="text-amber-600 font-semibold">班級</span>{' '}
-              <span className="font-black">{userInfo.classId} 班</span>
-            </p>
-            <p>
-              <span className="text-amber-600 font-semibold">座號</span>{' '}
-              <span className="font-black">{userInfo.seatNumber} 號</span>
-            </p>
-            <p>
-              <span className="text-amber-600 font-semibold">姓名</span>{' '}
-              <span className="font-black text-lg">{userInfo.name}</span>
-            </p>
-          </div>
-
-          <p className="text-xs text-amber-800/85 leading-relaxed mb-4 px-1">
-            茲證明上述 {PLAYER_ROLE} 已成功消滅鎮上全部變異老鼠，
-            完成漢他病毒防疫任務，表現卓越，特頒此狀。
+          <p className="text-sm sm:text-base font-black text-amber-800 tracking-[0.2em] mb-5">
+            榮 譽 獎 狀
           </p>
 
-          <div className="grid grid-cols-1 gap-2 text-left text-sm bg-amber-50/80 rounded-xl border border-amber-200/70 p-3 mb-4">
-            <div className="flex justify-between gap-2">
-              <span className="text-amber-700 font-semibold">總積分</span>
-              <span className="font-black text-amber-950 text-lg tabular-nums">
-                {stats.score} / 100
-              </span>
-            </div>
-            <div className="flex justify-between gap-2">
-              <span className="text-amber-700 font-semibold">完成時間</span>
-              <span className="font-black text-amber-950 tabular-nums">{timeMmSs}</span>
-            </div>
-            <div className="flex justify-between gap-2">
-              <span className="text-amber-700 font-semibold">遊戲耗時</span>
-              <span className="font-black text-amber-950">{timeLabel}</span>
-            </div>
-            <div className="flex justify-between gap-2">
-              <span className="text-amber-700 font-semibold">防疫積分</span>
-              <span className="font-black text-orange-600">{preventionScore}</span>
-            </div>
+          <p className="text-xs sm:text-sm text-[#4a3728]/90 leading-relaxed mb-5 px-2 sm:px-4 text-center">
+            茲證明上述稽查員已成功消滅鎮上全部變異老鼠，完成漢他病毒防疫任務，表現卓越，特頒此狀。
+          </p>
+
+          <div className="grid grid-cols-2 gap-2 sm:gap-3 mb-5">
+            {statItems.map((item) => (
+              <div
+                key={item.label}
+                className="flex flex-col items-center justify-center gap-0.5 rounded-xl
+                  bg-white/60 shadow-[0_2px_8px_rgba(120,80,20,0.12)] border border-amber-200/50
+                  px-2 py-2.5 sm:py-3 min-h-[4.25rem]"
+              >
+                <span className="text-[10px] sm:text-xs font-bold text-amber-800/80">
+                  {item.label}
+                </span>
+                <span
+                  className={`font-black tabular-nums text-center leading-tight
+                    ${item.accent ? 'text-lg sm:text-xl text-amber-950' : 'text-sm sm:text-base text-[#3d2b1f]'}`}
+                >
+                  {item.value}
+                </span>
+              </div>
+            ))}
           </div>
 
-          <p className="text-base sm:text-lg font-black text-transparent bg-clip-text
-            bg-linear-to-r from-amber-600 via-orange-500 to-amber-600 mb-2">
+          <p
+            className="text-xl sm:text-2xl md:text-3xl font-black leading-tight
+              text-transparent bg-clip-text
+              bg-linear-to-r from-amber-600 via-orange-500 to-amber-700
+              drop-shadow-[0_2px_4px_rgba(180,83,9,0.25)]"
+          >
             {honorTitle}
           </p>
-          <p className="text-[10px] text-amber-600/90 font-bold mb-4">— 評語與稱號 —</p>
+          <p className="text-[10px] text-amber-700/80 font-bold mt-2 tracking-widest">
+            — 最終稱號 —
+          </p>
+        </div>
 
-          {scoreSubmitLoading ? (
-            <div className="flex items-center justify-center gap-2 text-amber-600 text-xs font-medium mb-4">
-              <Loader2 className="animate-spin" size={16} />
-              正在上傳成績至 Google 表單…
-            </div>
-          ) : (
-            <div className="space-y-1 mb-4 text-xs font-bold">
-              {scoreSubmitResult?.googleForm && (
-                <div className="flex items-center justify-center gap-1.5 text-emerald-700">
-                  <CloudUpload size={14} />
-                  成績已上傳至 Google 試算表
-                </div>
-              )}
-              {!scoreSubmitResult?.googleForm && isGoogleFormConfigured() && (
-                <p className="text-rose-600 text-center">
-                  試算表上傳可能失敗，請通知老師確認 GAS 設定
-                </p>
-              )}
-              {!isGoogleFormConfigured() && (
-                <p className="text-amber-700 text-center">
-                  尚未設定試算表網址，成績僅供畫面顯示
-                </p>
-              )}
-              {scoreSubmitResult?.leaderboardSaved && (
-                <div className="flex items-center justify-center gap-1.5 text-amber-700">
-                  <HardDrive size={14} />
-                  成績已登錄本機排行榜
-                </div>
-              )}
-            </div>
-          )}
+        <div className="flex flex-col gap-2.5 px-1 sm:px-2">
+          <button
+            type="button"
+            onClick={() => void handleDownload()}
+            disabled={downloading}
+            className="flex items-center justify-center gap-2 w-full py-3 rounded-xl
+              bg-linear-to-r from-slate-800 via-slate-700 to-amber-900
+              text-amber-50 font-black text-sm sm:text-base
+              border-2 border-amber-500/60 shadow-[0_4px_20px_rgba(30,41,59,0.35)]
+              hover:from-slate-700 hover:via-amber-800 hover:to-amber-800
+              hover:shadow-[0_0_18px_rgba(245,158,11,0.4)]
+              disabled:opacity-60 disabled:cursor-wait transition-all duration-200"
+          >
+            {downloading ? (
+              <Loader2 size={18} className="animate-spin" />
+            ) : (
+              <Download size={18} />
+            )}
+            💾 下載獎狀 (JPG)
+          </button>
 
           <div className="grid grid-cols-2 gap-3">
             <button
               type="button"
               onClick={onPlayAgain}
               className="flex items-center justify-center gap-1.5 py-2.5 rounded-xl border-2 border-amber-500
-                bg-white text-amber-800 font-black text-xs sm:text-sm hover:bg-amber-50 transition-colors shadow-sm"
+                bg-[#fdfbf7] text-amber-900 font-black text-xs sm:text-sm
+                hover:bg-amber-50 transition-colors shadow-sm"
             >
               <RefreshCcw size={16} />
               再玩一次
@@ -168,8 +183,9 @@ export default function HonorCertificate({
             <button
               type="button"
               onClick={onExitHome}
-              className="flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-amber-600
-                text-white font-black text-xs sm:text-sm hover:bg-amber-500 transition-colors shadow-md"
+              className="flex items-center justify-center gap-1.5 py-2.5 rounded-xl
+                bg-linear-to-r from-amber-600 to-orange-600 text-white font-black text-xs sm:text-sm
+                hover:from-amber-500 hover:to-orange-500 transition-colors shadow-md"
             >
               <Home size={16} />
               返回首頁

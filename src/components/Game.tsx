@@ -1305,8 +1305,6 @@ export default function Game({
             userInfo={userInfo}
             stats={endgameStats}
             preventionScore={preventionScore}
-            scoreSubmitLoading={scoreSubmitState.loading}
-            scoreSubmitResult={scoreSubmitState.result}
             onPlayAgain={() => {
               stopVictoryMusic();
               onPlayAgain();
