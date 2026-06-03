@@ -2292,20 +2292,85 @@ function collectRatCandidates(
   return candidates.sort((a, b) => b.score - a.score || hash(a.x, a.y) - hash(b.x, b.y));
 }
 
+/** 任務鼠出生點最小曼哈頓距離（避免多隻擠在同一區塊） */
+const MIN_QUEST_RAT_MANHATTAN_GAP = 8;
+
+function manhattanCellDist(
+  ax: number,
+  ay: number,
+  bx: number,
+  by: number,
+): number {
+  return Math.abs(ax - bx) + Math.abs(ay - by);
+}
+
+function isFarEnoughFromQuests(
+  x: number,
+  y: number,
+  placed: readonly QuestPoint[],
+  minGap: number,
+): boolean {
+  return placed.every((p) => manhattanCellDist(x, y, p.x, p.y) >= minGap);
+}
+
 function pickCandidate(
   pool: RatCandidate[],
   zone: RatCandidate['zone'],
   used: Set<string>,
   preferHint?: RatCandidate['hint'],
 ): RatCandidate | null {
-  const filtered = pool.filter(
-    (c) => c.zone === zone && !used.has(`${c.x},${c.y}`) && (!preferHint || c.hint === preferHint),
-  );
-  if (filtered.length === 0) {
-    const fallback = pool.find((c) => c.zone === zone && !used.has(`${c.x},${c.y}`));
-    return fallback ?? null;
+  return pickCandidateWithSpacing(pool, zone, used, [], 0, preferHint);
+}
+
+/** 優先選與已放置任務鼠距離最遠的候選格 */
+function pickCandidateWithSpacing(
+  pool: RatCandidate[],
+  zone: RatCandidate['zone'],
+  used: Set<string>,
+  placed: readonly QuestPoint[],
+  minGap: number,
+  preferHint?: RatCandidate['hint'],
+): RatCandidate | null {
+  const tryPick = (gap: number, hint?: RatCandidate['hint']) => {
+    const filtered = pool.filter(
+      (c) =>
+        c.zone === zone &&
+        !used.has(`${c.x},${c.y}`) &&
+        (gap <= 0 || isFarEnoughFromQuests(c.x, c.y, placed, gap)) &&
+        (!hint || c.hint === hint),
+    );
+    if (filtered.length === 0) return null;
+
+    if (placed.length === 0 || gap <= 0) {
+      return filtered.sort((a, b) => b.score - a.score)[0] ?? null;
+    }
+
+    return (
+      [...filtered].sort((a, b) => {
+        const minA = Math.min(
+          ...placed.map((p) => manhattanCellDist(a.x, a.y, p.x, p.y)),
+        );
+        const minB = Math.min(
+          ...placed.map((p) => manhattanCellDist(b.x, b.y, p.x, p.y)),
+        );
+        return minB - minA || b.score - a.score;
+      })[0] ?? null
+    );
+  };
+
+  let pick =
+    tryPick(minGap, preferHint) ??
+    (preferHint ? tryPick(minGap) : null);
+
+  for (let gap = minGap - 1; gap >= 5 && !pick; gap--) {
+    pick = tryPick(gap, preferHint) ?? (preferHint ? tryPick(gap) : null);
   }
-  return filtered[0];
+
+  if (!pick) {
+    pick = tryPick(0, preferHint) ?? tryPick(0);
+  }
+
+  return pick;
 }
 
 /** 任務老鼠：僅可行走地面且緊鄰牆壁或髒亂物 */
@@ -2322,12 +2387,12 @@ function generateQuestPoints(
 
   const zoneQuests: { questionId: number; zone: RatCandidate['zone']; prefer?: RatCandidate['hint'] }[] = [
     { questionId: 1, zone: 'clinic', prefer: 'corner' },
-    { questionId: 2, zone: 'clinic', prefer: 'corner' },
-    { questionId: 3, zone: 'clinic', prefer: 'alley' },
-    { questionId: 4, zone: 'clinic', prefer: 'alley' },
-    { questionId: 5, zone: 'restaurant', prefer: 'alley' },
-    { questionId: 6, zone: 'restaurant', prefer: 'dirty' },
-    { questionId: 7, zone: 'restaurant', prefer: 'corner' },
+    { questionId: 2, zone: 'clinic', prefer: 'alley' },
+    { questionId: 3, zone: 'clinic', prefer: 'dirty' },
+    { questionId: 4, zone: 'clinic', prefer: 'corner' },
+    { questionId: 5, zone: 'restaurant', prefer: 'corner' },
+    { questionId: 6, zone: 'restaurant', prefer: 'alley' },
+    { questionId: 7, zone: 'restaurant', prefer: 'dirty' },
     { questionId: 8, zone: 'warehouse', prefer: 'dirty' },
     { questionId: 9, zone: 'warehouse', prefer: 'dirty' },
     { questionId: 10, zone: 'warehouse', prefer: 'dirty' },
@@ -2338,23 +2403,64 @@ function generateQuestPoints(
 
   forcedDirty.forEach((qId, i) => {
     const spot = warehouseDirty[i];
-    if (!spot) return;
-    const rat = findRecyclingRatSpot(map, meta, spot, deco, reserved, used);
-    if (!rat) return;
-    used.add(`${rat.x},${rat.y}`);
-    reserved.add(`${rat.x},${rat.y}`);
+    let pick: RatCandidate | null = null;
+
+    if (spot) {
+      const nearDirty = findRecyclingRatSpot(map, meta, spot, deco, reserved, used);
+      if (
+        nearDirty &&
+        isFarEnoughFromQuests(
+          nearDirty.x,
+          nearDirty.y,
+          points,
+          MIN_QUEST_RAT_MANHATTAN_GAP,
+        )
+      ) {
+        pick = nearDirty;
+      }
+    }
+
+    if (!pick) {
+      pick =
+        pickCandidateWithSpacing(
+          candidates,
+          'warehouse',
+          used,
+          points,
+          MIN_QUEST_RAT_MANHATTAN_GAP,
+          'dirty',
+        ) ??
+        pickCandidateWithSpacing(
+          candidates,
+          'warehouse',
+          used,
+          points,
+          MIN_QUEST_RAT_MANHATTAN_GAP,
+        );
+    }
+
+    if (!pick) return;
+    used.add(`${pick.x},${pick.y}`);
+    reserved.add(`${pick.x},${pick.y}`);
     points.push({
       questionId: qId,
-      x: rat.x,
-      y: rat.y,
+      x: pick.x,
+      y: pick.y,
       ratType: (Math.floor(Math.random() * 3) + 1) as 1 | 2 | 3,
     });
   });
 
   zoneQuests.forEach(({ questionId, zone, prefer }) => {
     if (points.some((p) => p.questionId === questionId)) return;
-    const pick = pickCandidate(candidates, zone, used, prefer)
-      ?? pickCandidate(candidates, zone, used);
+    const pick =
+      pickCandidateWithSpacing(
+        candidates,
+        zone,
+        used,
+        points,
+        MIN_QUEST_RAT_MANHATTAN_GAP,
+        prefer,
+      ) ?? pickCandidateWithSpacing(candidates, zone, used, points, MIN_QUEST_RAT_MANHATTAN_GAP);
     if (!pick) return;
     if (!isValidRatSpawn(map, meta, pick.x, pick.y, deco, new Set())) return;
     used.add(`${pick.x},${pick.y}`);

@@ -62,6 +62,7 @@ export type RatWorldState = {
 
 export type RatPositionsMap = Record<number, RatWorldState>;
 
+/** 任務鼠離出生點最遠可漫遊格數（略小可減少視覺上聚成一團） */
 export const RAT_WANDER_RADIUS = 1;
 export const RAT_WANDER_INTERVAL_MIN_MS = 1500;
 export const RAT_WANDER_INTERVAL_MAX_MS = 2000;

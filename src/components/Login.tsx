@@ -66,7 +66,7 @@ export default function Login({ onStartGame }: LoginProps) {
   };
 
   return (
-    <div className="relative flex flex-col min-h-full h-full overflow-hidden">
+    <div className="relative flex flex-col min-h-full h-full overflow-x-hidden overflow-y-auto">
       <HeroBackground />
 
       <AnimatePresence mode="wait">
@@ -76,7 +76,7 @@ export default function Login({ onStartGame }: LoginProps) {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="relative z-10 flex flex-col flex-1 min-h-0 p-3 sm:p-4"
+            className="relative z-10 flex flex-col flex-1 min-h-0 p-3 sm:p-4 overflow-visible"
           >
             <LoginDecorRats />
 
