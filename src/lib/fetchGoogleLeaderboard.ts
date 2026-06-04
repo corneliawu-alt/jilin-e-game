@@ -48,12 +48,26 @@ export async function fetchTopSpeedrunFromGoogle(
       return [];
     }
 
-    if (!response.ok || parsed?.ok === false || !Array.isArray(parsed?.entries)) {
+    if (!response.ok || parsed?.ok === false) {
       console.warn('[Leaderboard] 讀取失敗', {
         status: response.status,
         error: parsed?.error,
       });
       return [];
+    }
+
+    if (!Array.isArray(parsed?.entries)) {
+      console.warn(
+        '[Leaderboard] GAS 回應缺少 entries，請確認已部署含 getLeaderboard 的腳本並建立新版本',
+        parsed,
+      );
+      return [];
+    }
+
+    if (parsed.entries.length === 0 && import.meta.env.DEV) {
+      console.info(
+        '[Leaderboard] 試算表有資料但 entries 為空時，多半是 Time 欄格式問題；請更新 GAS 使用 getDisplayValues（見 docs/gas-score-submit.example.js）',
+      );
     }
 
     return parsed.entries

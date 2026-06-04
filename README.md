@@ -54,7 +54,8 @@ VITE_GOOGLE_FORM_SCRIPT_URL=https://script.google.com/macros/s/你的部署ID/ex
 
 - 僅從 Google 試算表讀取（`GET ?action=leaderboard&limit=6`），顯示全體最快前六名。
 - GAS 需使用 `docs/gas-score-submit.example.js` 內含 `getLeaderboard` 的版本，部署後請**更新網路應用程式版本**。
-- 測試：瀏覽器開啟 `你的/exec?action=leaderboard&limit=6` 應看到 JSON `entries`。
+- 測試：瀏覽器開啟 `你的/exec?action=leaderboard&limit=6` 應看到 JSON `entries`（有資料時不可為 `[]`）。
+- **試算表有資料但 `entries` 是空陣列**：多半是 `Time` 欄被 Google 存成時間格式，`getValues()` 讀不到 `4:42` 這種字串；請更新 GAS 為使用 `getDisplayValues()` 的版本並重新部署。
 
 ### 排行榜有資料、試算表卻是空的？
 

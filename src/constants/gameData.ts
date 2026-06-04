@@ -890,6 +890,18 @@ export function calculateStars(score: number): 1 | 2 | 3 {
   return 1;
 }
 
+/** 速度加成（最多 10 分）：≤3 分鐘 10 分；≥15 分鐘 0 分；中間線性遞減 */
+export function calculateTimeBonus(elapsedSeconds: number): number {
+  const FAST_LIMIT_SEC = 3 * 60;
+  const SLOW_LIMIT_SEC = 15 * 60;
+
+  if (elapsedSeconds <= FAST_LIMIT_SEC) return 10;
+  if (elapsedSeconds >= SLOW_LIMIT_SEC) return 0;
+
+  const ratio = (SLOW_LIMIT_SEC - elapsedSeconds) / (SLOW_LIMIT_SEC - FAST_LIMIT_SEC);
+  return 10 * ratio;
+}
+
 export function calculateFinalScore(
   completedQuests: number,
   firstTryCorrect: number,
@@ -897,8 +909,7 @@ export function calculateFinalScore(
 ): number {
   const accuracyPart = (firstTryCorrect / TOTAL_QUESTS) * 70;
   const completionPart = (completedQuests / TOTAL_QUESTS) * 20;
-  const minutes = elapsedSeconds / 60;
-  const timePart = Math.max(0, 10 - minutes * 1.5);
+  const timePart = calculateTimeBonus(elapsedSeconds);
   return Math.round(Math.min(100, accuracyPart + completionPart + timePart));
 }
 

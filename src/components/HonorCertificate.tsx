@@ -32,7 +32,7 @@ export default function HonorCertificate({
   const timeLabel = formatElapsedTime(stats.elapsedSeconds);
   const timeMmSs = formatElapsedTimeMMSS(stats.elapsedSeconds);
   const [downloading, setDownloading] = useState(false);
-  const [downloadMessage, setDownloadMessage] = useState<string | null>(null);
+  const [downloadMessage, setDownloadMessage] = useState(null as string | null);
 
   const statItems: StatItem[] = [
     { label: '總積分', value: `${stats.score} / 100`, accent: true },
@@ -76,8 +76,10 @@ export default function HonorCertificate({
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
-      className="fixed inset-0 z-[290] flex items-center justify-center p-3 sm:p-6 overflow-y-auto
-        bg-linear-to-br from-amber-100/90 via-[#f5efe6] to-orange-100/90"
+      className="fixed inset-0 z-[290] flex items-center justify-center p-3 sm:p-6 overflow-y-auto"
+      style={{
+        background: 'linear-gradient(135deg, rgba(254, 243, 199, 0.9), #f5efe6, rgba(255, 237, 213, 0.9))',
+      }}
       role="dialog"
       aria-modal="true"
       aria-label="榮譽獎狀結算"
@@ -86,82 +88,52 @@ export default function HonorCertificate({
 
       <div className="relative z-10 w-full max-w-lg my-auto flex flex-col items-stretch gap-4">
         <motion.div
-          id="certificate-node"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.45 }}
-          className="relative rounded-2xl border-8 border-double border-amber-500
-            bg-[#fdfbf7]
-            shadow-[0_12px_40px_rgba(180,120,40,0.22),inset_0_0_60px_rgba(251,191,36,0.08)]
-            px-5 py-8 sm:px-8 sm:py-10 text-center"
         >
-          <div
-            className="absolute -top-5 left-1/2 -translate-x-1/2 w-14 h-14 rounded-full
-              bg-linear-to-br from-amber-400 to-orange-500 flex items-center justify-center
-              shadow-lg border-2 border-amber-300"
-          >
-            <Award size={32} className="text-white drop-shadow" />
+          <div id="certificate-node" className="cert-root">
+            <div className="cert-medal" aria-hidden>
+              <Award size={32} />
+            </div>
+
+            <p className="cert-org">吉林小鎮防疫總部</p>
+
+            <p className="cert-congrats">
+              恭喜{' '}
+              <span className="cert-name-dark">{userInfo.classId} 班</span>{' '}
+              <span className="cert-name-dark">{userInfo.seatNumber} 號</span>{' '}
+              <span className="cert-name-green">{userInfo.name}</span>{' '}
+              榮獲
+            </p>
+
+            <h2 className="cert-title">特級衛生稽查員</h2>
+            <p className="cert-subtitle">榮 譽 獎 狀</p>
+
+            <p className="cert-body">
+              茲證明上述稽查員已成功消滅鎮上全部變異老鼠，完成漢他病毒防疫任務，表現卓越，特頒此狀。
+            </p>
+
+            <div className="cert-stats">
+              {statItems.map((item) => (
+                <div key={item.label} className="cert-stat">
+                  <span className="cert-stat-label">{item.label}</span>
+                  <span
+                    className={
+                      item.accent ? 'cert-stat-value cert-stat-value--accent' : 'cert-stat-value'
+                    }
+                  >
+                    {item.value}
+                  </span>
+                </div>
+              ))}
+            </div>
+
+            <p data-cert-honor-title className="cert-honor">
+              {honorTitle}
+            </p>
+            <p className="cert-honor-caption">— 最終稱號 —</p>
           </div>
-
-          <p className="text-[10px] font-black tracking-[0.35em] text-amber-800/70 uppercase mt-4 mb-3">
-            吉林小鎮防疫總部
-          </p>
-
-          <p
-            className="text-sm sm:text-base font-bold leading-relaxed mb-3
-              text-[#2d4a3e] drop-shadow-[0_1px_0_rgba(255,255,255,0.6)]"
-          >
-            恭喜{' '}
-            <span className="font-black text-[#3d2b1f]">{userInfo.classId} 班</span>{' '}
-            <span className="font-black text-[#3d2b1f]">{userInfo.seatNumber} 號</span>{' '}
-            <span className="font-black text-[#1a3d32]">{userInfo.name}</span>{' '}
-            榮獲
-          </p>
-
-          <h2 className="text-xl sm:text-2xl font-black text-[#3d2b1f] leading-tight mb-0.5">
-            特級衛生稽查員
-          </h2>
-          <p className="text-sm sm:text-base font-black text-amber-800 tracking-[0.2em] mb-5">
-            榮 譽 獎 狀
-          </p>
-
-          <p className="text-xs sm:text-sm text-[#4a3728]/90 leading-relaxed mb-5 px-2 sm:px-4 text-center">
-            茲證明上述稽查員已成功消滅鎮上全部變異老鼠，完成漢他病毒防疫任務，表現卓越，特頒此狀。
-          </p>
-
-          <div className="grid grid-cols-2 gap-2 sm:gap-3 mb-5">
-            {statItems.map((item) => (
-              <div
-                key={item.label}
-                className="flex flex-col items-center justify-center gap-0.5 rounded-xl
-                  bg-white/60 shadow-[0_2px_8px_rgba(120,80,20,0.12)] border border-amber-200/50
-                  px-2 py-2.5 sm:py-3 min-h-[4.25rem]"
-              >
-                <span className="text-[10px] sm:text-xs font-bold text-amber-800/80">
-                  {item.label}
-                </span>
-                <span
-                  className={`font-black tabular-nums text-center leading-tight
-                    ${item.accent ? 'text-lg sm:text-xl text-amber-950' : 'text-sm sm:text-base text-[#3d2b1f]'}`}
-                >
-                  {item.value}
-                </span>
-              </div>
-            ))}
-          </div>
-
-          <p
-            data-cert-honor-title
-            className="text-xl sm:text-2xl md:text-3xl font-black leading-tight
-              text-transparent bg-clip-text
-              bg-linear-to-r from-amber-600 via-orange-500 to-amber-700
-              drop-shadow-[0_2px_4px_rgba(180,83,9,0.25)]"
-          >
-            {honorTitle}
-          </p>
-          <p className="text-[10px] text-amber-700/80 font-bold mt-2 tracking-widest">
-            — 最終稱號 —
-          </p>
         </motion.div>
 
         <div className="flex flex-col gap-2.5 px-1 sm:px-2">
@@ -169,13 +141,14 @@ export default function HonorCertificate({
             type="button"
             onClick={() => void handleDownload()}
             disabled={downloading}
-            className="flex items-center justify-center gap-2 w-full py-3 rounded-xl
-              bg-linear-to-r from-slate-800 via-slate-700 to-amber-900
-              text-amber-50 font-black text-sm sm:text-base
-              border-2 border-amber-500/60 shadow-[0_4px_20px_rgba(30,41,59,0.35)]
-              hover:from-slate-700 hover:via-amber-800 hover:to-amber-800
-              hover:shadow-[0_0_18px_rgba(245,158,11,0.4)]
-              disabled:opacity-60 disabled:cursor-wait transition-all duration-200"
+            className="flex items-center justify-center gap-2 w-full py-3 rounded-xl font-black text-sm sm:text-base
+              disabled:opacity-60 disabled:cursor-wait transition-opacity duration-200"
+            style={{
+              color: '#fffbeb',
+              border: '2px solid rgba(245, 158, 11, 0.6)',
+              background: 'linear-gradient(90deg, #1e293b, #334155, #78350f)',
+              boxShadow: '0 4px 20px rgba(30, 41, 59, 0.35)',
+            }}
           >
             {downloading ? (
               <Loader2 size={18} className="animate-spin" />
@@ -187,15 +160,18 @@ export default function HonorCertificate({
 
           {downloadMessage && (
             <p
-              className={`text-center text-xs font-bold px-2 ${
-                downloadMessage.includes('取消') ||
-                downloadMessage.includes('找不到') ||
-                downloadMessage.includes('無法') ||
-                downloadMessage.includes('空白') ||
-                downloadMessage.includes('錯誤')
-                  ? 'text-rose-700'
-                  : 'text-emerald-800'
-              }`}
+              className="text-center text-xs font-bold px-2"
+              style={{
+                color:
+                  downloadMessage.includes('取消') ||
+                  downloadMessage.includes('找不到') ||
+                  downloadMessage.includes('無法') ||
+                  downloadMessage.includes('空白') ||
+                  downloadMessage.includes('錯誤') ||
+                  downloadMessage.includes('不完整')
+                    ? '#be123c'
+                    : '#065f46',
+              }}
               role="status"
             >
               {downloadMessage}
@@ -206,9 +182,14 @@ export default function HonorCertificate({
             <button
               type="button"
               onClick={onPlayAgain}
-              className="flex items-center justify-center gap-1.5 py-2.5 rounded-xl border-2 border-amber-500
-                bg-[#fdfbf7] text-amber-900 font-black text-xs sm:text-sm
-                hover:bg-amber-50 transition-colors shadow-sm"
+              className="flex items-center justify-center gap-1.5 py-2.5 rounded-xl font-black text-xs sm:text-sm
+                transition-opacity hover:opacity-90"
+              style={{
+                border: '2px solid #f59e0b',
+                backgroundColor: '#fdfbf7',
+                color: '#78350f',
+                boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
+              }}
             >
               <RefreshCcw size={16} />
               再玩一次
@@ -216,9 +197,12 @@ export default function HonorCertificate({
             <button
               type="button"
               onClick={onExitHome}
-              className="flex items-center justify-center gap-1.5 py-2.5 rounded-xl
-                bg-linear-to-r from-amber-600 to-orange-600 text-white font-black text-xs sm:text-sm
-                hover:from-amber-500 hover:to-orange-500 transition-colors shadow-md"
+              className="flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-white font-black text-xs sm:text-sm
+                transition-opacity hover:opacity-90"
+              style={{
+                background: 'linear-gradient(90deg, #d97706, #ea580c)',
+                boxShadow: '0 4px 6px rgba(0,0,0,0.12)',
+              }}
             >
               <Home size={16} />
               返回首頁

@@ -110,7 +110,7 @@ export default function LoginLeaderboard() {
                   initial={{ opacity: 0, x: -10 }}
                   animate={{ opacity: 1, x: 0 }}
                   transition={{ delay: index * 0.05 }}
-                  className={`flex items-center gap-2.5 rounded-lg px-3 py-2 border
+                  className={`flex items-center gap-2.5 rounded-lg px-3 py-2.5 sm:py-3 border
                     bg-linear-to-r backdrop-blur-sm
                     ${
                       isPodium
@@ -119,27 +119,35 @@ export default function LoginLeaderboard() {
                     }`}
                 >
                   <span
-                    className={`shrink-0 w-8 text-center font-black tabular-nums
-                      ${isPodium ? 'text-base' : 'text-sm text-amber-300/60'}`}
+                    className={`shrink-0 w-9 sm:w-10 text-center font-black tabular-nums
+                      ${isPodium ? 'text-lg sm:text-xl' : 'text-base text-amber-300/60'}`}
                   >
                     {isPodium ? medal : `${entry.rank}`}
                   </span>
-                  <div className="flex-1 min-w-0">
-                    <p
-                      className={`font-bold truncate text-sm
-                        ${isPodium ? 'text-amber-50' : 'text-slate-200'}`}
-                    >
-                      {entry.name}
-                    </p>
-                    <p className="text-xs text-amber-200/45 font-medium">
-                      {entry.classId} 班 · {entry.seatNumber} 號
-                    </p>
-                  </div>
-                  <div
-                    className="shrink-0 flex items-center gap-1 text-amber-300 font-bold
-                      tabular-nums text-sm"
+                  <p
+                    className={`flex-1 min-w-0 truncate font-bold leading-snug
+                      ${isPodium
+                        ? 'text-base sm:text-lg text-amber-50'
+                        : 'text-sm sm:text-base text-slate-200'}`}
                   >
-                    <Timer size={12} className="opacity-60" aria-hidden />
+                    <span>{entry.name}</span>
+                    <span
+                      className={`font-semibold mx-1.5 sm:mx-2
+                        ${isPodium ? 'text-amber-200/75' : 'text-amber-200/55'}`}
+                      aria-hidden
+                    >
+                      ·
+                    </span>
+                    <span className={isPodium ? 'text-amber-100/90' : 'text-amber-100/80'}>
+                      {entry.classId} 班 {entry.seatNumber} 號
+                    </span>
+                  </p>
+                  <div
+                    className={`shrink-0 flex items-center gap-1 text-amber-300 font-black
+                      tabular-nums
+                      ${isPodium ? 'text-base sm:text-lg' : 'text-sm sm:text-base'}`}
+                  >
+                    <Timer size={14} className="opacity-60" aria-hidden />
                     {entry.elapsedTime}
                   </div>
                 </motion.li>

@@ -60,15 +60,19 @@ function getLeaderboard(e) {
   try {
     var limit = Math.min(20, Math.max(1, parseInt(e.parameter.limit, 10) || 6));
     var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
-    var data = sheet.getDataRange().getValues();
+    var range = sheet.getDataRange();
+    // 畫面上看到的文字（Time 欄如 4:42）；getValues() 會變成 Date/數字導致排行榜空白
+    var displayRows = range.getDisplayValues();
+    var rawRows = range.getValues();
     var bestByKey = {};
 
-    for (var i = 1; i < data.length; i++) {
-      var row = data[i];
+    for (var i = 1; i < displayRows.length; i++) {
+      var row = displayRows[i];
+      var raw = rawRows[i];
       var classId = String(row[1] || '').trim();
       var seatNumber = String(row[2] || '').trim();
       var name = String(row[3] || '').trim();
-      var time = String(row[5] || '').trim();
+      var time = formatTimeCell(row[5], raw[5]);
       if (!name || !time) continue;
 
       var elapsedSeconds = parseTimeToSeconds(time);
@@ -114,6 +118,26 @@ function getLeaderboard(e) {
   } catch (err) {
     return { ok: false, error: String(err), entries: [] };
   }
+}
+
+/** 優先使用試算表畫面上的字串（4:42），否則嘗試從儲存格原始值還原 */
+function formatTimeCell(displayValue, rawValue) {
+  var shown = String(displayValue || '').trim();
+  if (shown && isFinite(parseTimeToSeconds(shown))) {
+    return shown;
+  }
+  if (typeof rawValue === 'number' && isFinite(rawValue) && rawValue >= 0) {
+    var totalMinutes = Math.round(rawValue * 24 * 60);
+    var hours = Math.floor(totalMinutes / 60);
+    var minutes = totalMinutes % 60;
+    return hours + ':' + (minutes < 10 ? '0' : '') + minutes;
+  }
+  if (rawValue instanceof Date) {
+    var h = rawValue.getHours();
+    var m = rawValue.getMinutes();
+    return h + ':' + (m < 10 ? '0' : '') + m;
+  }
+  return shown;
 }
 
 function parseTimeToSeconds(time) {

@@ -3,6 +3,37 @@ import html2canvas from 'html2canvas';
 export const CERTIFICATE_NODE_ID = 'certificate-node';
 export const CERTIFICATE_DOWNLOAD_FILENAME_FALLBACK = '料理鼠亡_榮譽獎狀.jpg';
 
+/** 小於此大小的 JPEG 多半是截圖失敗或下載被截斷 */
+const MIN_JPEG_BYTES = 2_000;
+
+/** 截圖用樣式（僅 hex/rgb，與 index.css .cert-* 同步；勿用 oklch） */
+const CERTIFICATE_CAPTURE_CSS = `
+#certificate-node.cert-root{position:relative;border-radius:1rem;border:8px double #f59e0b;background-color:#fdfbf7;box-shadow:0 12px 40px rgba(180,120,40,.22),inset 0 0 60px rgba(251,191,36,.08);padding:2rem 1.25rem;text-align:center;color:#3d2b1f}
+.cert-medal{position:absolute;top:-1.25rem;left:50%;transform:translateX(-50%);width:3.5rem;height:3.5rem;border-radius:9999px;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#fbbf24,#f97316);border:2px solid #fcd34d;box-shadow:0 10px 15px rgba(0,0,0,.15);color:#fff}
+.cert-org{margin-top:1rem;margin-bottom:.75rem;font-size:10px;font-weight:900;letter-spacing:.35em;text-transform:uppercase;color:rgba(146,64,14,.7)}
+.cert-congrats{font-size:.875rem;font-weight:700;line-height:1.625;margin-bottom:.75rem;color:#2d4a3e}
+.cert-name-dark{color:#3d2b1f}.cert-name-green{color:#1a3d32}
+.cert-title{font-size:1.25rem;font-weight:900;line-height:1.25;margin-bottom:.125rem;color:#3d2b1f}
+.cert-subtitle{font-size:.875rem;font-weight:900;letter-spacing:.2em;margin-bottom:1.25rem;color:#92400e}
+.cert-body{font-size:.75rem;line-height:1.625;margin-bottom:1.25rem;padding:0 .5rem;color:rgba(74,55,40,.9)}
+.cert-stats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.5rem;margin-bottom:1.25rem}
+.cert-stat{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.125rem;min-height:4.25rem;padding:.625rem .5rem;border-radius:.75rem;background:rgba(255,255,255,.6);border:1px solid rgba(253,230,138,.5);box-shadow:0 2px 8px rgba(120,80,20,.12)}
+.cert-stat-label{font-size:10px;font-weight:700;color:rgba(146,64,14,.8)}
+.cert-stat-value{font-weight:900;font-variant-numeric:tabular-nums;text-align:center;line-height:1.25;font-size:.875rem;color:#3d2b1f}
+.cert-stat-value--accent{font-size:1.125rem;color:#451a03}
+.cert-honor{font-size:1.25rem;font-weight:900;line-height:1.25;color:#b45309}
+.cert-honor-caption{margin-top:.5rem;font-size:10px;font-weight:700;letter-spacing:.1em;color:rgba(180,83,9,.8)}
+`;
+
+function injectCaptureStyles(doc: Document): void {
+  doc.querySelectorAll('style, link[rel="stylesheet"]').forEach((el) => {
+    el.remove();
+  });
+  const style = doc.createElement('style');
+  style.textContent = CERTIFICATE_CAPTURE_CSS;
+  doc.head.appendChild(style);
+}
+
 export type CertificateDownloadResult =
   | { ok: true; method: 'save-picker' | 'download' | 'preview' }
   | { ok: false; error: string };
@@ -66,10 +97,31 @@ async function pickSaveTarget(filename: string): Promise<SaveTarget | 'cancelled
   return { kind: 'anchor', link };
 }
 
+async function waitForCaptureReady(): Promise<void> {
+  if (document.fonts?.ready) {
+    await document.fonts.ready;
+  }
+  await new Promise<void>((resolve) => {
+    requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+  });
+}
+
 /** 清除會干擾 html2canvas 的動畫/transform 樣式（克隆 DOM 內） */
 function sanitizeCloneForCapture(root: HTMLElement): void {
   root.style.overflow = 'visible';
   root.style.paddingTop = '1.75rem';
+  root.style.opacity = '1';
+  root.style.visibility = 'visible';
+
+  root.querySelectorAll('*').forEach((node) => {
+    if (!(node instanceof HTMLElement)) return;
+    node.style.opacity = '1';
+    node.style.visibility = 'visible';
+    node.style.transform = 'none';
+    node.style.filter = 'none';
+    node.style.animation = 'none';
+    node.style.transition = 'none';
+  });
 
   let el: HTMLElement | null = root;
   while (el) {
@@ -90,10 +142,48 @@ function sanitizeCloneForCapture(root: HTMLElement): void {
   });
 }
 
-function canvasToJpegBlob(canvas: HTMLCanvasElement): Promise<Blob | null> {
-  return new Promise((resolve) => {
+function dataUrlToBlob(dataUrl: string, mime: string): Blob {
+  const base64 = dataUrl.split(',')[1] ?? '';
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return new Blob([bytes], { type: mime });
+}
+
+async function isValidJpeg(blob: Blob): Promise<boolean> {
+  if (blob.size < MIN_JPEG_BYTES) return false;
+  const head = new Uint8Array(await blob.slice(0, 3).arrayBuffer());
+  return head[0] === 0xff && head[1] === 0xd8 && head[2] === 0xff;
+}
+
+async function canvasToJpegBlob(canvas: HTMLCanvasElement): Promise<Blob | null> {
+  const fromToBlob = await new Promise<Blob | null>((resolve) => {
     canvas.toBlob((blob) => resolve(blob), 'image/jpeg', 0.92);
   });
+
+  if (fromToBlob && (await isValidJpeg(fromToBlob))) {
+    return fromToBlob;
+  }
+
+  try {
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
+    const fallback = dataUrlToBlob(dataUrl, 'image/jpeg');
+    if (await isValidJpeg(fallback)) return fallback;
+  } catch {
+    // 改試 PNG（較不易損壞，但檔名仍為 .jpg 時部分檢視器可能異常，故再試一次較低品質 JPEG）
+  }
+
+  try {
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+    const fallback = dataUrlToBlob(dataUrl, 'image/jpeg');
+    if (await isValidJpeg(fallback)) return fallback;
+  } catch {
+    return null;
+  }
+
+  return null;
 }
 
 function tryAnchorDownload(
@@ -106,15 +196,15 @@ function tryAnchorDownload(
   link.download = filename;
   link.rel = 'noopener';
 
-  try {
-    link.click();
-    return true;
-  } finally {
-    window.setTimeout(() => {
-      link.remove();
-      URL.revokeObjectURL(url);
-    }, 1000);
-  }
+  link.click();
+
+  // Windows 下載未完成就 revoke 會產生損壞的 JPG
+  window.setTimeout(() => {
+    link.remove();
+    URL.revokeObjectURL(url);
+  }, 120_000);
+
+  return true;
 }
 
 /** 一般下載失敗時，在新分頁開啟圖片供另存 */
@@ -133,18 +223,23 @@ async function writeBlobToTarget(
   blob: Blob,
   filename: string,
 ): Promise<CertificateDownloadResult> {
+  const jpegBlob =
+    blob.type === 'image/jpeg'
+      ? blob
+      : new Blob([await blob.arrayBuffer()], { type: 'image/jpeg' });
+
   if (target.kind === 'fs') {
     const writable = await target.handle.createWritable();
-    await writable.write(blob);
+    await writable.write(jpegBlob);
     await writable.close();
     return { ok: true, method: 'save-picker' };
   }
 
-  if (tryAnchorDownload(target.link, blob, filename)) {
+  if (tryAnchorDownload(target.link, jpegBlob, filename)) {
     return { ok: true, method: 'download' };
   }
 
-  openBlobPreview(blob);
+  openBlobPreview(jpegBlob);
   return { ok: true, method: 'preview' };
 }
 
@@ -165,15 +260,20 @@ export async function downloadCertificateAsJpg(
   }
 
   try {
+    await waitForCaptureReady();
+
+    const scale = Math.min(2, window.devicePixelRatio || 1.5);
+
     const canvas = await html2canvas(node, {
-      scale: 2,
+      scale,
       useCORS: true,
       allowTaint: false,
       backgroundColor: '#fdfbf7',
       logging: false,
       scrollX: 0,
       scrollY: 0,
-      onclone: (_doc, clonedNode) => {
+      onclone: (doc, clonedNode) => {
+        injectCaptureStyles(doc);
         if (clonedNode instanceof HTMLElement) {
           sanitizeCloneForCapture(clonedNode);
         }
@@ -188,7 +288,12 @@ export async function downloadCertificateAsJpg(
     const blob = await canvasToJpegBlob(canvas);
     if (!blob) {
       if (saveTarget.kind === 'anchor') saveTarget.link.remove();
-      return { ok: false, error: '無法產生圖片檔案。' };
+      return { ok: false, error: '無法產生圖片檔案，請換用 Chrome 或 Edge 再試。' };
+    }
+
+    if (!(await isValidJpeg(blob))) {
+      if (saveTarget.kind === 'anchor') saveTarget.link.remove();
+      return { ok: false, error: '圖片檔案不完整，請再按一次下載。' };
     }
 
     return await writeBlobToTarget(saveTarget, blob, filename);
