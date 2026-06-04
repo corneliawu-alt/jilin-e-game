@@ -884,40 +884,60 @@ export const DOLLS = PLAYER_CHARACTERS.map((c) => ({
   description: c.description,
 }));
 
-export function calculateStars(score: number): 1 | 2 | 3 {
-  if (score >= 85) return 3;
-  if (score >= 60) return 2;
+/** 單題得分（滿分 100 = 10 題 × 10 分） */
+export const QUEST_SCORE_PERFECT = 10;
+export const QUEST_SCORE_SECOND_TRY = 8;
+export const QUEST_SCORE_AFTER_BUST = 7;
+
+/** 排行榜時間獎勵：基準 10 分鐘，每提早 1 秒 +2 分 */
+export const LEADERBOARD_TIME_BASE_SEC = 600;
+export const LEADERBOARD_TIME_BONUS_PER_SEC = 2;
+
+/** 依答錯次數與是否曾兩次答錯被關閉，計算單題得分 */
+export function calculateQuestPoints(
+  wrongAttempts: number,
+  bustedAfterTwoWrong: boolean,
+): number {
+  if (bustedAfterTwoWrong || wrongAttempts >= 2) return QUEST_SCORE_AFTER_BUST;
+  if (wrongAttempts === 1) return QUEST_SCORE_SECOND_TRY;
+  return QUEST_SCORE_PERFECT;
+}
+
+/** 時間獎勵（競速）：Math.max(0, 600 - 秒數) * 2 */
+export function calculateTimeBonus(elapsedSeconds: number): number {
+  return (
+    Math.max(0, LEADERBOARD_TIME_BASE_SEC - elapsedSeconds) *
+    LEADERBOARD_TIME_BONUS_PER_SEC
+  );
+}
+
+/** 防疫積分（排行榜）：總積分×10 + 時間獎勵 */
+export function calculateLeaderboardScore(
+  baseScore: number,
+  elapsedSeconds: number,
+): number {
+  return Math.round(baseScore * 10 + calculateTimeBonus(elapsedSeconds));
+}
+
+/** 由試算表 Score + Time 還原防疫積分（與上傳邏輯一致） */
+export function computeLeaderboardScoreFromSheet(
+  baseScore: number,
+  elapsedSeconds: number,
+): number {
+  return calculateLeaderboardScore(baseScore, elapsedSeconds);
+}
+
+export function calculateStars(baseScore: number): 1 | 2 | 3 {
+  if (baseScore >= 90) return 3;
+  if (baseScore >= 70) return 2;
   return 1;
 }
 
-/** 速度加成（最多 10 分）：≤3 分鐘 10 分；≥15 分鐘 0 分；中間線性遞減 */
-export function calculateTimeBonus(elapsedSeconds: number): number {
-  const FAST_LIMIT_SEC = 3 * 60;
-  const SLOW_LIMIT_SEC = 15 * 60;
-
-  if (elapsedSeconds <= FAST_LIMIT_SEC) return 10;
-  if (elapsedSeconds >= SLOW_LIMIT_SEC) return 0;
-
-  const ratio = (SLOW_LIMIT_SEC - elapsedSeconds) / (SLOW_LIMIT_SEC - FAST_LIMIT_SEC);
-  return 10 * ratio;
-}
-
-export function calculateFinalScore(
-  completedQuests: number,
-  firstTryCorrect: number,
-  elapsedSeconds: number,
-): number {
-  const accuracyPart = (firstTryCorrect / TOTAL_QUESTS) * 70;
-  const completionPart = (completedQuests / TOTAL_QUESTS) * 20;
-  const timePart = calculateTimeBonus(elapsedSeconds);
-  return Math.round(Math.min(100, accuracyPart + completionPart + timePart));
-}
-
-/** 依防疫總積分與綜合得分授予結局稱號 */
-export function getHonorTitle(preventionScore: number, finalScore: number): string {
-  if (preventionScore >= 100 && finalScore >= 90) return '傳說級防疫大師';
-  if (preventionScore >= 70 || finalScore >= 75) return '金牌衛生稽查員';
-  return '見習衛生稽查員';
+/** 依總積分（100 分制）授予結局稱號 */
+export function getHonorTitle(baseScore: number): string {
+  if (baseScore >= 90) return '傳說級防疫大師';
+  if (baseScore >= 70) return '優秀衛生稽查員';
+  return '見習防疫新手';
 }
 
 export function formatElapsedTime(elapsedSeconds: number): string {

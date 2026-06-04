@@ -5,6 +5,8 @@ type GoogleLeaderboardRow = {
   classId?: string;
   seatNumber?: string;
   name?: string;
+  baseScore?: number;
+  leaderboardScore?: number;
   elapsedTime?: string;
   elapsedSeconds?: number;
   savedAt?: string;
@@ -84,6 +86,8 @@ export async function fetchTopSpeedrunFromGoogle(
         classId: String(row.classId ?? '').trim(),
         seatNumber: String(row.seatNumber ?? '').trim(),
         name: row.name.trim(),
+        baseScore: Number(row.baseScore) || 0,
+        leaderboardScore: Number(row.leaderboardScore) || 0,
         elapsedTime: row.elapsedTime.trim(),
         elapsedSeconds: row.elapsedSeconds,
         savedAt: row.savedAt,

@@ -7,7 +7,7 @@ import {
 } from '../constants/treasureRadar';
 
 interface TreasureRadarButtonProps {
-  preventionScore: number;
+  leaderboardScore: number;
   lastRadarUsedAt: number | null;
   uncollectedCount: number;
   disabled?: boolean;
@@ -15,7 +15,7 @@ interface TreasureRadarButtonProps {
 }
 
 export default function TreasureRadarButton({
-  preventionScore,
+  leaderboardScore,
   lastRadarUsedAt,
   uncollectedCount,
   disabled = false,
@@ -30,8 +30,8 @@ export default function TreasureRadarButton({
 
   const cooldownMs = radarCooldownRemainingMs(lastRadarUsedAt, now);
   const freeReady = canUseRadarFree(lastRadarUsedAt, now);
-  const canUse = canUseRadarWithScore(preventionScore, lastRadarUsedAt, now);
-  const payMode = !freeReady && preventionScore >= RADAR_SCORE_COST;
+  const canUse = canUseRadarWithScore(leaderboardScore, lastRadarUsedAt, now);
+  const payMode = !freeReady && leaderboardScore >= RADAR_SCORE_COST;
   const noTreasures = uncollectedCount === 0;
 
   const cooldownSec = Math.ceil(cooldownMs / 1000);

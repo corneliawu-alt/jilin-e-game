@@ -101,12 +101,12 @@ export function canUseRadarFree(lastUsedAt: number | null, now = Date.now()): bo
 }
 
 export function canUseRadarWithScore(
-  preventionScore: number,
+  leaderboardScore: number,
   lastUsedAt: number | null,
   now = Date.now(),
 ): boolean {
   if (canUseRadarFree(lastUsedAt, now)) return true;
-  return preventionScore >= RADAR_SCORE_COST;
+  return leaderboardScore >= RADAR_SCORE_COST;
 }
 
 export function radarCooldownRemainingMs(lastUsedAt: number | null, now = Date.now()): number {

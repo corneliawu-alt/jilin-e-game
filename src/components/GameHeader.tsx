@@ -16,7 +16,7 @@ interface GameHeaderProps {
   completedQuests: number;
   completedQuestIds: ReadonlySet<number>;
   lastCapturedQuestId: number | null;
-  preventionScore: number;
+  leaderboardScore: number;
   showBadgeBurst: boolean;
   formatTime: (sec: number) => string;
   gamePhase: GamePhase;
@@ -58,7 +58,7 @@ export default function GameHeader({
   completedQuests,
   completedQuestIds,
   lastCapturedQuestId,
-  preventionScore,
+  leaderboardScore,
   showBadgeBurst,
   formatTime,
   gamePhase,
@@ -112,7 +112,7 @@ export default function GameHeader({
               completedQuestIds={completedQuestIds}
               lastCapturedQuestId={lastCapturedQuestId}
               showBadgeBurst={showBadgeBurst}
-              currentScore={preventionScore}
+              currentScore={leaderboardScore}
             />
           ) : (
             <div className="flex-1 min-w-[88px]">
@@ -143,13 +143,13 @@ export default function GameHeader({
               >
                 <span className="text-[8px] font-black text-amber-900/75">積分</span>
                 <span className="text-sm font-black text-amber-900 tabular-nums leading-none">
-                  {preventionScore}
+                  {leaderboardScore}
                 </span>
               </div>
             </div>
             <div className="flex items-center gap-1 flex-wrap justify-end">
               <TreasureRadarButton
-                preventionScore={preventionScore}
+                leaderboardScore={leaderboardScore}
                 lastRadarUsedAt={lastRadarUsedAt}
                 uncollectedCount={uncollectedTreasureCount}
                 disabled={radarUiDisabled}

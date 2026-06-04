@@ -6,23 +6,36 @@ export const CERTIFICATE_DOWNLOAD_FILENAME_FALLBACK = '料理鼠亡_榮譽獎狀
 /** 小於此大小的 JPEG 多半是截圖失敗或下載被截斷 */
 const MIN_JPEG_BYTES = 2_000;
 
-/** 截圖用樣式（僅 hex/rgb，與 index.css .cert-* 同步；勿用 oklch） */
+/** 截圖用樣式（與 index.css .cert-* 同步；僅 hex/rgb） */
 const CERTIFICATE_CAPTURE_CSS = `
-#certificate-node.cert-root{position:relative;border-radius:1rem;border:8px double #f59e0b;background-color:#fdfbf7;box-shadow:0 12px 40px rgba(180,120,40,.22),inset 0 0 60px rgba(251,191,36,.08);padding:2rem 1.25rem;text-align:center;color:#3d2b1f}
-.cert-medal{position:absolute;top:-1.25rem;left:50%;transform:translateX(-50%);width:3.5rem;height:3.5rem;border-radius:9999px;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#fbbf24,#f97316);border:2px solid #fcd34d;box-shadow:0 10px 15px rgba(0,0,0,.15);color:#fff}
-.cert-org{margin-top:1rem;margin-bottom:.75rem;font-size:10px;font-weight:900;letter-spacing:.35em;text-transform:uppercase;color:rgba(146,64,14,.7)}
-.cert-congrats{font-size:.875rem;font-weight:700;line-height:1.625;margin-bottom:.75rem;color:#2d4a3e}
-.cert-name-dark{color:#3d2b1f}.cert-name-green{color:#1a3d32}
-.cert-title{font-size:1.25rem;font-weight:900;line-height:1.25;margin-bottom:.125rem;color:#3d2b1f}
-.cert-subtitle{font-size:.875rem;font-weight:900;letter-spacing:.2em;margin-bottom:1.25rem;color:#92400e}
-.cert-body{font-size:.75rem;line-height:1.625;margin-bottom:1.25rem;padding:0 .5rem;color:rgba(74,55,40,.9)}
-.cert-stats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.5rem;margin-bottom:1.25rem}
-.cert-stat{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.125rem;min-height:4.25rem;padding:.625rem .5rem;border-radius:.75rem;background:rgba(255,255,255,.6);border:1px solid rgba(253,230,138,.5);box-shadow:0 2px 8px rgba(120,80,20,.12)}
-.cert-stat-label{font-size:10px;font-weight:700;color:rgba(146,64,14,.8)}
-.cert-stat-value{font-weight:900;font-variant-numeric:tabular-nums;text-align:center;line-height:1.25;font-size:.875rem;color:#3d2b1f}
-.cert-stat-value--accent{font-size:1.125rem;color:#451a03}
-.cert-honor{font-size:1.25rem;font-weight:900;line-height:1.25;color:#b45309}
-.cert-honor-caption{margin-top:.5rem;font-size:10px;font-weight:700;letter-spacing:.1em;color:rgba(180,83,9,.8)}
+#certificate-node.cert-root{position:relative;max-width:400px;margin:0 auto;padding:2.75rem 1.5rem 1.75rem;text-align:center;color:#3d2b1f;border-radius:14px;border:3px solid #d97706;outline:7px double #fbbf24;outline-offset:-2px;background:linear-gradient(165deg,#fffef9 0%,#fdf8ee 45%,#faf3e0 100%);box-shadow:0 16px 48px rgba(120,72,16,.2),inset 0 1px 0 rgba(255,255,255,.9)}
+.cert-inner-frame{position:absolute;inset:14px;border:1px solid rgba(217,119,6,.28);border-radius:8px;pointer-events:none}
+.cert-medal{position:absolute;top:-1.35rem;left:50%;transform:translateX(-50%);width:3.25rem;height:3.25rem;border-radius:9999px;display:flex;align-items:center;justify-content:center;background:linear-gradient(145deg,#fde68a,#f59e0b 55%,#ea580c);border:3px solid #fff;box-shadow:0 6px 18px rgba(180,83,9,.45);color:#fff}
+.cert-org{margin:0 0 1rem;font-size:9px;font-weight:800;letter-spacing:.28em;color:rgba(120,53,15,.55)}
+.cert-recipient{margin-bottom:.85rem}
+.cert-recipient-label{margin:0 0 .25rem;font-size:10px;font-weight:700;letter-spacing:.2em;color:rgba(120,53,15,.5)}
+.cert-recipient-name{margin:0;font-size:1.35rem;font-weight:900;line-height:1.2;color:#1a3d32}
+.cert-recipient-meta{margin:.35rem 0 0;font-size:.8rem;font-weight:700;color:#57534e}
+.cert-divider{height:1px;margin:0 auto .85rem;max-width:85%;background:linear-gradient(90deg,transparent,rgba(217,119,6,.45) 20%,rgba(217,119,6,.45) 80%,transparent)}
+.cert-main-title{margin:0 0 .65rem;font-size:1.15rem;font-weight:900;letter-spacing:.35em;color:#92400e}
+.cert-body{margin:0 0 1.1rem;padding:0 .25rem;font-size:.72rem;line-height:1.65;color:rgba(68,52,38,.88)}
+.cert-score-hero{margin:0 auto .65rem;padding:.75rem 1rem;max-width:220px;border-radius:12px;background:linear-gradient(180deg,#fff 0%,#fff7ed 100%);border:1px solid rgba(251,191,36,.65);box-shadow:0 4px 14px rgba(180,120,40,.12)}
+.cert-score-hero-label{display:block;font-size:10px;font-weight:800;letter-spacing:.15em;color:rgba(146,64,14,.75);margin-bottom:.15rem}
+.cert-score-hero-value{margin:0;font-size:2.25rem;font-weight:900;line-height:1;font-variant-numeric:tabular-nums;color:#9a3412}
+.cert-score-hero-max{font-size:1.1rem;font-weight:800;color:rgba(154,52,18,.55);margin-left:.1rem}
+.cert-stars{margin:0 0 1rem;font-size:1.35rem;letter-spacing:.2em;line-height:1}
+.cert-stars-filled{color:#eab308}
+.cert-stars-empty{color:rgba(180,83,9,.22)}
+.cert-metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.45rem;margin-bottom:.55rem}
+.cert-metric{padding:.5rem .35rem;border-radius:10px;background:rgba(255,255,255,.55);border:1px solid rgba(253,230,138,.4)}
+.cert-metric--highlight{background:linear-gradient(180deg,#fffbeb 0%,#fef3c7 100%);border-color:rgba(245,158,11,.55)}
+.cert-metric-label{display:block;font-size:9px;font-weight:700;color:rgba(120,53,15,.65);margin-bottom:.2rem;line-height:1.2}
+.cert-metric-value{display:block;font-size:.95rem;font-weight:900;font-variant-numeric:tabular-nums;color:#3d2b1f;line-height:1.15}
+.cert-metric--highlight .cert-metric-value{font-size:1.05rem;color:#9a3412}
+.cert-time-bonus{margin:0 0 1rem;font-size:10px;font-weight:700;color:rgba(120,53,15,.55)}
+.cert-honor-panel{margin-top:.25rem;padding:.85rem .75rem .7rem;border-radius:12px;background:linear-gradient(180deg,rgba(254,243,199,.65) 0%,rgba(253,230,138,.35) 100%);border:1px solid rgba(245,158,11,.4)}
+.cert-honor-caption{margin:0 0 .35rem;font-size:9px;font-weight:800;letter-spacing:.22em;color:rgba(146,64,14,.65)}
+.cert-honor{margin:0;font-size:1.35rem;font-weight:900;line-height:1.25;color:#b45309}
 `;
 
 function injectCaptureStyles(doc: Document): void {
@@ -109,7 +122,7 @@ async function waitForCaptureReady(): Promise<void> {
 /** 清除會干擾 html2canvas 的動畫/transform 樣式（克隆 DOM 內） */
 function sanitizeCloneForCapture(root: HTMLElement): void {
   root.style.overflow = 'visible';
-  root.style.paddingTop = '1.75rem';
+  root.style.paddingTop = '2.75rem';
   root.style.opacity = '1';
   root.style.visibility = 'visible';
 
@@ -262,13 +275,13 @@ export async function downloadCertificateAsJpg(
   try {
     await waitForCaptureReady();
 
-    const scale = Math.min(2, window.devicePixelRatio || 1.5);
+    const scale = Math.min(2.5, Math.max(2, window.devicePixelRatio || 2));
 
     const canvas = await html2canvas(node, {
       scale,
       useCORS: true,
       allowTaint: false,
-      backgroundColor: '#fdfbf7',
+      backgroundColor: '#fffef9',
       logging: false,
       scrollX: 0,
       scrollY: 0,

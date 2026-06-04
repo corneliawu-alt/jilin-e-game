@@ -2,23 +2,33 @@ import type { UserInfo } from '../App';
 import type { GameResultStats } from '../components/Game';
 import { formatElapsedTimeMMSS } from '../constants/gameData';
 
-/** 傳送至 Google Apps Script（寫入試算表）的成績 payload */
-export type GoogleFormScorePayload = {
-  classId: string;
-  seatNumber: string;
+/**
+ * 上傳 Google 試算表（GAS POST）的標準成績物件
+ *
+ * @example
+ * {
+ *   class: "501",
+ *   seat: "01",
+ *   name: "王小明",
+ *   baseScore: 90,
+ *   score: 1620,
+ *   time: "04:00"
+ * }
+ */
+export type GameScoreSubmitPayload = {
+  class: string;
+  seat: string;
   name: string;
-  totalScore: number;
-  elapsedTime: string;
-  preventionScore: number;
-  completedQuests: number;
-  stars: number;
-  /** 與試算表標題列一致（Timestamp 由 GAS 寫入） */
-  Class: string;
-  Seat: string;
-  Name: string;
-  Score: number;
-  Time: string;
+  /** 總積分（100 分制） */
+  baseScore: number;
+  /** 防疫積分（排行榜競技分） */
+  score: number;
+  /** 完成時間（MM:SS） */
+  time: string;
 };
+
+/** @deprecated 請改用 GameScoreSubmitPayload */
+export type GoogleFormScorePayload = GameScoreSubmitPayload;
 
 const GAS_URL = import.meta.env.VITE_GOOGLE_FORM_SCRIPT_URL?.trim() ?? '';
 
@@ -35,7 +45,7 @@ export function getGoogleFormScriptUrl(): string {
  * 使用 text/plain + CORS，避免 no-cors 導致 JSON 無法送達且無法讀取結果
  */
 export async function submitScoreToGoogleForm(
-  payload: GoogleFormScorePayload,
+  payload: GameScoreSubmitPayload,
 ): Promise<boolean> {
   if (!isGoogleFormConfigured()) {
     if (import.meta.env.DEV) {
@@ -77,25 +87,20 @@ export async function submitScoreToGoogleForm(
   }
 }
 
-export function buildGoogleFormPayload(
+/** 由登入資料與結算統計組出標準上傳 payload */
+export function buildScoreSubmitPayload(
   userInfo: UserInfo,
   stats: GameResultStats,
-  preventionScore: number,
-): GoogleFormScorePayload {
-  const elapsedTime = formatElapsedTimeMMSS(stats.elapsedSeconds);
+): GameScoreSubmitPayload {
   return {
-    classId: userInfo.classId,
-    seatNumber: userInfo.seatNumber,
-    name: userInfo.name,
-    totalScore: stats.score,
-    elapsedTime,
-    preventionScore,
-    completedQuests: stats.completedQuests,
-    stars: stats.stars,
-    Class: userInfo.classId,
-    Seat: userInfo.seatNumber,
-    Name: userInfo.name,
-    Score: stats.score,
-    Time: elapsedTime,
+    class: userInfo.classId.trim(),
+    seat: userInfo.seatNumber.trim(),
+    name: userInfo.name.trim(),
+    baseScore: stats.score,
+    score: stats.leaderboardScore,
+    time: formatElapsedTimeMMSS(stats.elapsedSeconds),
   };
 }
+
+/** @deprecated 請改用 buildScoreSubmitPayload */
+export const buildGoogleFormPayload = buildScoreSubmitPayload;

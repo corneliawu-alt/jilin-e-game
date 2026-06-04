@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { motion } from 'motion/react';
-import { Crown, Loader2, Timer } from 'lucide-react';
+import { Crown, Loader2, Trophy } from 'lucide-react';
 import { fetchTopSpeedrunFromGoogle } from '../lib/fetchGoogleLeaderboard';
 import type { LeaderboardEntry } from '../lib/leaderboard';
 import { isGoogleFormConfigured } from '../lib/submitGoogleForm';
@@ -59,7 +59,7 @@ export default function LoginLeaderboard() {
   return (
     <section className="flex flex-col min-h-0 flex-1" aria-label="最速通關排行榜">
       <header className="text-center shrink-0 pb-2">
-        <h2 className="login-rpg-heading text-base sm:text-lg">最速通關排行榜</h2>
+        <h2 className="login-rpg-heading text-base sm:text-lg">防疫積分排行榜</h2>
       </header>
 
       <div className="flex-1 min-h-0 overflow-y-auto login-rpg-scroll-inner pr-0.5">
@@ -143,12 +143,17 @@ export default function LoginLeaderboard() {
                     </span>
                   </p>
                   <div
-                    className={`shrink-0 flex items-center gap-1 text-amber-300 font-black
-                      tabular-nums
+                    className={`shrink-0 flex flex-col items-end text-amber-300 font-black
+                      tabular-nums leading-tight
                       ${isPodium ? 'text-base sm:text-lg' : 'text-sm sm:text-base'}`}
                   >
-                    <Timer size={14} className="opacity-60" aria-hidden />
-                    {entry.elapsedTime}
+                    <span className="flex items-center gap-1">
+                      <Trophy size={14} className="opacity-60" aria-hidden />
+                      {entry.leaderboardScore}
+                    </span>
+                    <span className="text-[10px] font-semibold text-amber-200/55">
+                      {entry.elapsedTime}
+                    </span>
                   </div>
                 </motion.li>
               );

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import {
   NPCS,
@@ -12,8 +12,10 @@ import {
   QUESTIONS,
   TargetNPC,
   PLAYER_ROLE,
-  calculateFinalScore,
+  calculateLeaderboardScore,
+  calculateQuestPoints,
   calculateStars,
+  calculateTimeBonus,
   PLAYER_START,
   canMoveTo,
   getNearbyNpc,
@@ -98,9 +100,12 @@ function logRatQuest(...args: unknown[]) {
 }
 
 export interface GameResultStats {
+  /** 總積分（100 分制，答題累加） */
   score: number;
+  /** 防疫積分（排行榜：總積分×10 + 時間獎勵） */
+  leaderboardScore: number;
+  timeBonus: number;
   completedQuests: number;
-  firstTryCorrect: number;
   totalAttempts: number;
   elapsedSeconds: number;
   stars: 1 | 2 | 3;
@@ -127,7 +132,9 @@ export default function Game({
   const [completedQuestIds, setCompletedQuestIds] = useState<Set<number>>(() => new Set());
   const [activeQuestionId, setActiveQuestionId] = useState<number | null>(null);
   const [activeQuestion, setActiveQuestion] = useState<QuestQuestion | null>(null);
-  const [preventionScore, setPreventionScore] = useState(0);
+  const [baseScore, setBaseScore] = useState(0);
+  /** 付費使用寶物雷達時從防疫積分扣除的累計值 */
+  const [radarScorePenalty, setRadarScorePenalty] = useState(0);
   const [showBadgeBurst, setShowBadgeBurst] = useState(false);
   const [showQuiz, setShowQuiz] = useState(false);
   const [seekingNpc, setSeekingNpc] = useState<TargetNPC | null>(null);
@@ -136,11 +143,11 @@ export default function Game({
   const [npcClueMode, setNpcClueMode] = useState(false);
   const [npcDialogMode, setNpcDialogMode] = useState<NpcDialogMode>('intro');
   const [npcFarewellMessage, setNpcFarewellMessage] = useState('');
-  const [firstTryCorrect, setFirstTryCorrect] = useState(0);
   const [totalAttempts, setTotalAttempts] = useState(0);
-  const [questAttempted, setQuestAttempted] = useState(false);
-  /** 當前開啟的任務對話框內已答錯次數（關閉後下次觸發同一鼠會在 openQuestQuiz 重置） */
-  const questWrongCountRef = useRef(0);
+  /** 每題累計答錯次數（questionId → 次數） */
+  const questWrongAttemptsRef = useRef<Map<number, number>>(new Map());
+  /** 曾答錯兩次被強制關閉的題號 */
+  const questBustedIdsRef = useRef<Set<number>>(new Set());
   const [questSystemDialog, setQuestSystemDialog] = useState<{
     title: string;
     text: string;
@@ -258,25 +265,40 @@ export default function Game({
 
     const frozenSeconds = Math.floor((Date.now() - startTime) / 1000);
     setElapsedSeconds(frozenSeconds);
-    const score = calculateFinalScore(completedQuests, firstTryCorrect, frozenSeconds);
+    const timeBonus = calculateTimeBonus(frozenSeconds);
+    const leaderboardScore = Math.max(
+      0,
+      calculateLeaderboardScore(baseScore, frozenSeconds) - radarScorePenalty,
+    );
     setEndgameStats({
-      score,
+      score: baseScore,
+      leaderboardScore,
+      timeBonus,
       completedQuests,
-      firstTryCorrect,
       totalAttempts,
       elapsedSeconds: frozenSeconds,
-      stars: calculateStars(score),
+      stars: calculateStars(baseScore),
     });
     beginVictoryMusic();
     setEndgamePhase('cutscene');
   }, [
     allQuestsDone,
     completedQuests,
-    firstTryCorrect,
+    baseScore,
+    radarScorePenalty,
     totalAttempts,
     startTime,
     beginVictoryMusic,
   ]);
+
+  const leaderboardScoreLive = useMemo(
+    () =>
+      Math.max(
+        0,
+        calculateLeaderboardScore(baseScore, elapsedSeconds) - radarScorePenalty,
+      ),
+    [baseScore, elapsedSeconds, radarScorePenalty],
+  );
 
   /** 任務答題框開關：僅 battle BGM；關閉後恢復小鎮 BGM（bomp 僅 NPC 解鎖時） */
   useEffect(() => {
@@ -534,8 +556,6 @@ export default function Game({
     setShowRatTauntDialog(false);
     setActiveQuestion(question);
     setActiveQuestionId(question.id);
-    setQuestAttempted(false);
-    questWrongCountRef.current = 0;
     setShowQuiz(true);
     return true;
   }, [showQuestSystemMessage]);
@@ -594,7 +614,6 @@ export default function Game({
         }
         setActiveQuestion(question);
         setActiveQuestionId(point.questionId);
-        setQuestAttempted(false);
         setBossGateMode('ready');
         return;
       }
@@ -751,7 +770,6 @@ export default function Game({
         const item = PREVENTION_ITEMS_BY_ID[current.itemId];
         setCollectedTreasureIds((prev) => new Set(prev).add(current.id));
         setInventory((inv) => ({ ...inv, [current.itemId]: inv[current.itemId] + 1 }));
-        setPreventionScore((s) => s + item.scoreBonus);
       }
       return null;
     });
@@ -760,7 +778,6 @@ export default function Game({
 
   const dismissBossGateReady = useCallback(() => {
     setBossGateMode(null);
-    questWrongCountRef.current = 0;
     setShowQuiz(true);
   }, []);
 
@@ -771,14 +788,14 @@ export default function Game({
 
   const activateTreasureRadar = useCallback(() => {
     const now = Date.now();
-    if (!canUseRadarWithScore(preventionScore, lastRadarUsedAt, now)) return;
+    if (!canUseRadarWithScore(leaderboardScoreLive, lastRadarUsedAt, now)) return;
 
     const target = findNearestTreasure(playerPos, collectedTreasureIds);
     if (!target) return;
 
     const free = canUseRadarFree(lastRadarUsedAt, now);
     if (!free) {
-      setPreventionScore((s) => s - RADAR_SCORE_COST);
+      setRadarScorePenalty((p) => p + RADAR_SCORE_COST);
     }
     setLastRadarUsedAt(now);
     setRadarTarget({ x: target.x, y: target.y });
@@ -788,7 +805,7 @@ export default function Game({
 
     window.setTimeout(() => setRadarTarget(null), RADAR_PING_DURATION_MS);
     window.setTimeout(() => setRadarToast(null), RADAR_PING_DURATION_MS + 1500);
-  }, [preventionScore, lastRadarUsedAt, playerPos, collectedTreasureIds]);
+  }, [leaderboardScoreLive, lastRadarUsedAt, playerPos, collectedTreasureIds]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -912,15 +929,15 @@ export default function Game({
 
       if (selectedIndex === activeQuestion.correctAnswer) {
         playSfx('success');
-        questWrongCountRef.current = 0;
         return { kind: 'correct' };
       }
 
       playSfx('fail');
-      setQuestAttempted(true);
-      questWrongCountRef.current += 1;
+      const qid = activeQuestion.id;
+      const wrongCount = (questWrongAttemptsRef.current.get(qid) ?? 0) + 1;
+      questWrongAttemptsRef.current.set(qid, wrongCount);
 
-      if (questWrongCountRef.current === 1) {
+      if (wrongCount === 1) {
         return { kind: 'retry', message: QUEST_FIRST_WRONG_HINT };
       }
 
@@ -934,32 +951,33 @@ export default function Game({
   );
 
   const handleQuestDismissFailed = useCallback(() => {
-    questWrongCountRef.current = 0;
+    if (activeQuestionId !== null) {
+      questBustedIdsRef.current.add(activeQuestionId);
+    }
     setShowQuiz(false);
     setActiveQuestion(null);
     setActiveQuestionId(null);
-  }, []);
+  }, [activeQuestionId]);
 
   const handleQuestCorrect = useCallback(() => {
     if (activeQuestionId === null) return;
 
     const capturedId = activeQuestionId;
-    if (!questAttempted) {
-      setFirstTryCorrect((c) => c + 1);
-    }
-    setPreventionScore((s) => s + 10);
+    const wrongAttempts = questWrongAttemptsRef.current.get(capturedId) ?? 0;
+    const busted = questBustedIdsRef.current.has(capturedId);
+    const points = calculateQuestPoints(wrongAttempts, busted);
+    setBaseScore((s) => Math.min(100, s + points));
+
     setCompletedQuestIds((prev) => new Set(prev).add(capturedId));
     setLastCapturedQuestId(capturedId);
     triggerBadgeBurst();
     setShowQuiz(false);
     setSeekingNpc(null);
-    setQuestAttempted(false);
     setActiveQuestion(null);
     setActiveQuestionId(null);
-    questWrongCountRef.current = 0;
 
     setTimeout(() => setLastCapturedQuestId(null), 700);
-  }, [activeQuestionId, questAttempted, triggerBadgeBurst]);
+  }, [activeQuestionId, triggerBadgeBurst]);
 
   const closeNpc = (learningComplete = false) => {
     if (activeNpc && learningComplete && !npcClueMode) {
@@ -1013,7 +1031,7 @@ export default function Game({
         completedQuests={completedQuests}
         completedQuestIds={completedQuestIds}
         lastCapturedQuestId={lastCapturedQuestId}
-        preventionScore={preventionScore}
+        leaderboardScore={leaderboardScoreLive}
         showBadgeBurst={showBadgeBurst}
         formatTime={formatTime}
         gamePhase={gamePhase}
@@ -1094,7 +1112,7 @@ export default function Game({
               speakerName="尋寶成功"
               speakerBadge={
                 <span className="text-[10px] bg-amber-500/40 text-amber-100 px-2 py-0.5 rounded border border-amber-400/60 font-bold">
-                  +{item.scoreBonus} 積分
+                  防疫道具
                 </span>
               }
               portrait={
@@ -1109,7 +1127,7 @@ export default function Game({
                 獲得 {item.name} {item.emoji}！
               </p>
               <p className="mt-2 text-[10px] text-amber-200/80">
-                {item.description} — 防疫積分 +{item.scoreBonus}，已放入背包。繼續探索地圖尋找更多寶物吧！
+                {item.description} — 已放入背包。湊齊三樣道具才能挑戰鼠王！
               </p>
             </RpgDialogBox>
           );
@@ -1290,7 +1308,7 @@ export default function Game({
               if (!endgameScoreSubmittedRef.current) {
                 endgameScoreSubmittedRef.current = true;
                 setScoreSubmitState({ loading: true, result: null });
-                void submitGameScore(userInfo, endgameStats, preventionScore).then(
+                void submitGameScore(userInfo, endgameStats).then(
                   (result) => setScoreSubmitState({ loading: false, result }),
                 );
               }
@@ -1305,7 +1323,7 @@ export default function Game({
             key="honor-certificate"
             userInfo={userInfo}
             stats={endgameStats}
-            preventionScore={preventionScore}
+            leaderboardScore={leaderboardScoreLive}
             onPlayAgain={() => {
               stopVictoryMusic();
               onPlayAgain();

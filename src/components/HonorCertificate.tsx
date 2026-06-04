@@ -2,11 +2,7 @@ import React, { useCallback, useState } from 'react';
 import { motion } from 'motion/react';
 import type { UserInfo } from '../App';
 import type { GameResultStats } from './Game';
-import {
-  formatElapsedTime,
-  formatElapsedTimeMMSS,
-  getHonorTitle,
-} from '../constants/gameData';
+import { formatElapsedTimeMMSS, getHonorTitle } from '../constants/gameData';
 import { downloadCertificateAsJpg } from '../lib/downloadCertificate';
 import ConfettiOverlay from './ConfettiOverlay';
 import { Award, Home, RefreshCcw, Download, Loader2 } from 'lucide-react';
@@ -14,34 +10,22 @@ import { Award, Home, RefreshCcw, Download, Loader2 } from 'lucide-react';
 interface HonorCertificateProps {
   userInfo: UserInfo;
   stats: GameResultStats;
-  preventionScore: number;
   onPlayAgain: () => void;
   onExitHome: () => void;
 }
 
-type StatItem = { label: string; value: string; accent?: boolean };
-
 export default function HonorCertificate({
   userInfo,
   stats,
-  preventionScore,
   onPlayAgain,
   onExitHome,
 }: HonorCertificateProps) {
-  const honorTitle = getHonorTitle(preventionScore, stats.score);
-  const timeLabel = formatElapsedTime(stats.elapsedSeconds);
+  const honorTitle = getHonorTitle(stats.score);
   const timeMmSs = formatElapsedTimeMMSS(stats.elapsedSeconds);
+  const starsFilled = '★'.repeat(stats.stars);
+  const starsEmpty = '☆'.repeat(3 - stats.stars);
   const [downloading, setDownloading] = useState(false);
   const [downloadMessage, setDownloadMessage] = useState(null as string | null);
-
-  const statItems: StatItem[] = [
-    { label: '總積分', value: `${stats.score} / 100`, accent: true },
-    { label: '完成時間', value: timeMmSs },
-    { label: '遊戲耗時', value: timeLabel },
-    { label: '防疫積分', value: String(preventionScore), accent: true },
-    { label: '通關星級', value: '★'.repeat(stats.stars) + '☆'.repeat(3 - stats.stars) },
-    { label: '任務完成', value: `${stats.completedQuests} / 10` },
-  ];
 
   const handleDownload = useCallback(async () => {
     if (downloading) return;
@@ -86,53 +70,75 @@ export default function HonorCertificate({
     >
       <ConfettiOverlay />
 
-      <div className="relative z-10 w-full max-w-lg my-auto flex flex-col items-stretch gap-4">
+      <div className="relative z-10 w-full max-w-md my-auto flex flex-col items-stretch gap-4">
         <motion.div
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.45 }}
         >
           <div id="certificate-node" className="cert-root">
+            <div className="cert-inner-frame" aria-hidden />
+
             <div className="cert-medal" aria-hidden>
-              <Award size={32} />
+              <Award size={28} strokeWidth={2.5} />
             </div>
 
             <p className="cert-org">吉林小鎮防疫總部</p>
 
-            <p className="cert-congrats">
-              恭喜{' '}
-              <span className="cert-name-dark">{userInfo.classId} 班</span>{' '}
-              <span className="cert-name-dark">{userInfo.seatNumber} 號</span>{' '}
-              <span className="cert-name-green">{userInfo.name}</span>{' '}
-              榮獲
-            </p>
-
-            <h2 className="cert-title">特級衛生稽查員</h2>
-            <p className="cert-subtitle">榮 譽 獎 狀</p>
-
-            <p className="cert-body">
-              茲證明上述稽查員已成功消滅鎮上全部變異老鼠，完成漢他病毒防疫任務，表現卓越，特頒此狀。
-            </p>
-
-            <div className="cert-stats">
-              {statItems.map((item) => (
-                <div key={item.label} className="cert-stat">
-                  <span className="cert-stat-label">{item.label}</span>
-                  <span
-                    className={
-                      item.accent ? 'cert-stat-value cert-stat-value--accent' : 'cert-stat-value'
-                    }
-                  >
-                    {item.value}
-                  </span>
-                </div>
-              ))}
+            <div className="cert-recipient">
+              <p className="cert-recipient-label">特此表彰</p>
+              <p className="cert-recipient-name">{userInfo.name}</p>
+              <p className="cert-recipient-meta">
+                {userInfo.classId} 班 · {userInfo.seatNumber} 號
+              </p>
             </div>
 
-            <p data-cert-honor-title className="cert-honor">
-              {honorTitle}
+            <div className="cert-divider" aria-hidden />
+
+            <h2 className="cert-main-title">榮 譽 獎 狀</h2>
+
+            <p className="cert-body">
+              成功消滅鎮上全部變異老鼠，完成漢他病毒防疫任務，表現卓越，特頒此狀以資鼓勵。
             </p>
-            <p className="cert-honor-caption">— 最終稱號 —</p>
+
+            <div className="cert-score-hero">
+              <span className="cert-score-hero-label">總積分</span>
+              <p className="cert-score-hero-value">
+                {stats.score}
+                <span className="cert-score-hero-max">/100</span>
+              </p>
+            </div>
+
+            <p className="cert-stars" aria-label={`通關 ${stats.stars} 星`}>
+              <span className="cert-stars-filled">{starsFilled}</span>
+              <span className="cert-stars-empty">{starsEmpty}</span>
+            </p>
+
+            <div className="cert-metrics">
+              <div className="cert-metric cert-metric--highlight">
+                <span className="cert-metric-label">防疫積分</span>
+                <span className="cert-metric-value">{stats.leaderboardScore}</span>
+              </div>
+              <div className="cert-metric">
+                <span className="cert-metric-label">通關時間</span>
+                <span className="cert-metric-value">{timeMmSs}</span>
+              </div>
+              <div className="cert-metric">
+                <span className="cert-metric-label">任務完成</span>
+                <span className="cert-metric-value">
+                  {stats.completedQuests}/10
+                </span>
+              </div>
+            </div>
+
+            <p className="cert-time-bonus">時間獎勵 +{stats.timeBonus}</p>
+
+            <div className="cert-honor-panel">
+              <p className="cert-honor-caption">最終稱號</p>
+              <p data-cert-honor-title className="cert-honor">
+                {honorTitle}
+              </p>
+            </div>
           </div>
         </motion.div>
 
@@ -155,7 +161,7 @@ export default function HonorCertificate({
             ) : (
               <Download size={18} />
             )}
-            💾 下載獎狀 (JPG)
+            下載獎狀 (JPG)
           </button>
 
           {downloadMessage && (

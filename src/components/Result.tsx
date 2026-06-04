@@ -5,25 +5,17 @@ import { GameResultStats } from './Game';
 import { submitGameScore, type GameScoreSubmitResult } from '../lib/submitGameScore';
 import { isGoogleFormConfigured } from '../lib/submitGoogleForm';
 import { RefreshCcw, Share2, CheckCircle, Loader2, Star, Award } from 'lucide-react';
-import { PLAYER_ROLE } from '../constants/gameData';
+import { getHonorTitle, PLAYER_ROLE } from '../constants/gameData';
 
 interface ResultProps {
   userInfo: UserInfo;
   stats: GameResultStats;
-  preventionScore?: number;
   onRestart: () => void;
 }
-
-const STAR_LABELS: Record<1 | 2 | 3, string> = {
-  3: '特級榮譽稽查員',
-  2: '優良防疫稽查員',
-  1: '見習衛生稽查員',
-};
 
 export default function Result({
   userInfo,
   stats,
-  preventionScore = 0,
   onRestart,
 }: ResultProps) {
   const [isSaving, setIsSaving] = useState(true);
@@ -31,14 +23,12 @@ export default function Result({
 
   const minutes = Math.floor(stats.elapsedSeconds / 60);
   const seconds = stats.elapsedSeconds % 60;
-  const accuracyPct = Math.round((stats.firstTryCorrect / stats.completedQuests) * 100) || 0;
-
   useEffect(() => {
     let cancelled = false;
 
     const saveScore = async () => {
       try {
-        const result = await submitGameScore(userInfo, stats, preventionScore);
+        const result = await submitGameScore(userInfo, stats);
         if (!cancelled) setSaveResult(result);
       } catch (error) {
         console.error('Error saving record:', error);
@@ -85,7 +75,7 @@ export default function Result({
         <p className="text-amber-700 text-sm font-medium">
           {userInfo.classId} 班 {userInfo.seatNumber} 號 {userInfo.name}
         </p>
-        <p className="text-lg font-black text-orange-600 mt-2">{STAR_LABELS[stats.stars]}</p>
+        <p className="text-lg font-black text-orange-600 mt-2">{getHonorTitle(stats.score)}</p>
         <p className="text-xs text-amber-500">{PLAYER_ROLE} 榮譽獎狀</p>
       </div>
 
@@ -99,8 +89,8 @@ export default function Result({
           <span className="font-bold">{stats.completedQuests} / 10</span>
         </div>
         <div className="flex justify-between">
-          <span className="text-amber-600">首次答對率</span>
-          <span className="font-bold">{accuracyPct}%</span>
+          <span className="text-amber-600">防疫積分</span>
+          <span className="font-bold">{stats.leaderboardScore}</span>
         </div>
         <div className="flex justify-between">
           <span className="text-amber-600">完成時間</span>

@@ -4,8 +4,10 @@
  * ⚠️ 請在「要收集成績的那一份試算表」內開啟 Apps Script：
  *    試算表 → 擴充功能 → Apps Script（這樣 getActiveSpreadsheet() 才會指向正確檔案）
  *
- * 試算表第一列標題請設為（與 Google 表單回應常用格式一致）：
- *   Timestamp | Class | Seat | Name | Score | Time
+ * 試算表第一列標題建議：
+ *   Timestamp | Class | Seat | Name | BaseScore | Score | Time
+ *   BaseScore = 總積分（100 分制）；Score = 防疫積分；Time = MM:SS
+ *   （舊版僅有 Score+Time 欄時，排行榜會由 Score 當 baseScore 並重算防疫積分）
  *
  * 部署步驟：
  * 1. 貼上此檔 doPost / doGet 內容
@@ -38,14 +40,34 @@ function doPost(e) {
     var data = JSON.parse(e.postData.contents);
     var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
 
-    var classId = String(data.Class ?? data.classId ?? '').trim();
-    var seat = String(data.Seat ?? data.seatNumber ?? '').trim();
-    var name = String(data.Name ?? data.name ?? '').trim();
-    var score = data.Score ?? data.totalScore ?? '';
-    var time = String(data.Time ?? data.elapsedTime ?? '').trim();
+    var classId = String(data.class ?? data.Class ?? data.classId ?? '').trim();
+    var seat = String(data.seat ?? data.Seat ?? data.seatNumber ?? '').trim();
+    var name = String(data.name ?? data.Name ?? '').trim();
+    var baseScore = parseBaseScore(
+      data.baseScore ?? data.BaseScore ?? data.totalScore ?? data.Score ?? 0,
+    );
+    var time = String(data.time ?? data.Time ?? data.elapsedTime ?? '').trim();
+    var elapsedSeconds = parseTimeToSeconds(time);
+    var leaderboardScore = parseFloat(
+      String(data.score ?? data.leaderboardScore ?? data.LeaderboardScore ?? ''),
+    );
+    if (!isFinite(leaderboardScore) && isFinite(elapsedSeconds)) {
+      leaderboardScore = computeLeaderboardScore(baseScore, elapsedSeconds);
+    }
+    if (!isFinite(leaderboardScore)) {
+      leaderboardScore = 0;
+    }
 
-    // 欄位順序：A Timestamp, B Class, C Seat, D Name, E Score, F Time
-    sheet.appendRow([new Date(), classId, seat, name, score, time]);
+    // A Timestamp, B Class, C Seat, D Name, E BaseScore, F Score(防疫), G Time
+    sheet.appendRow([
+      new Date(),
+      classId,
+      seat,
+      name,
+      baseScore,
+      leaderboardScore,
+      time,
+    ]);
 
     return jsonResponse({ ok: true });
   } catch (err) {
@@ -53,15 +75,74 @@ function doPost(e) {
   }
 }
 
+var LEADERBOARD_TIME_BASE_SEC = 600;
+var LEADERBOARD_TIME_BONUS_PER_SEC = 2;
+
+function parseBaseScore(raw) {
+  var n = parseFloat(String(raw || '').trim());
+  return isFinite(n) ? n : 0;
+}
+
+/** 讀取一列成績（支援新 7 欄與舊 6 欄試算表） */
+function parseSheetScoreRow(displayRow, rawRow) {
+  var classId = String(displayRow[1] || '').trim();
+  var seatNumber = String(displayRow[2] || '').trim();
+  var name = String(displayRow[3] || '').trim();
+  if (!name) return null;
+
+  var baseScore;
+  var leaderboardScore;
+  var time;
+  var timeRaw;
+
+  var hasNewFormat =
+    displayRow.length > 6 && String(displayRow[6] || '').trim() !== '';
+
+  if (hasNewFormat) {
+    baseScore = parseBaseScore(displayRow[4]);
+    leaderboardScore = parseFloat(String(displayRow[5] || '').trim());
+    timeRaw = rawRow[6];
+    time = formatTimeCell(displayRow[6], timeRaw);
+  } else {
+    baseScore = parseBaseScore(displayRow[4]);
+    timeRaw = rawRow[5];
+    time = formatTimeCell(displayRow[5], timeRaw);
+    leaderboardScore = NaN;
+  }
+
+  if (!time) return null;
+  var elapsedSeconds = parseTimeToSeconds(time);
+  if (!isFinite(elapsedSeconds)) return null;
+
+  if (!isFinite(leaderboardScore)) {
+    leaderboardScore = computeLeaderboardScore(baseScore, elapsedSeconds);
+  }
+
+  return {
+    classId: classId,
+    seatNumber: seatNumber,
+    name: name,
+    baseScore: baseScore,
+    leaderboardScore: Math.round(leaderboardScore),
+    time: time,
+    elapsedSeconds: elapsedSeconds,
+  };
+}
+
+/** 防疫積分 = 總積分×10 + max(0, 600-秒數)×2 */
+function computeLeaderboardScore(baseScore, elapsedSeconds) {
+  var timeBonus = Math.max(0, LEADERBOARD_TIME_BASE_SEC - elapsedSeconds) * LEADERBOARD_TIME_BONUS_PER_SEC;
+  return Math.round(baseScore * 10 + timeBonus);
+}
+
 /**
- * 每位學生（班級+座號+姓名）只保留最快一筆，再取全體前 limit 名
+ * 每位學生只保留防疫積分最高的一筆；同分則保留時間較短者
  */
 function getLeaderboard(e) {
   try {
     var limit = Math.min(20, Math.max(1, parseInt(e.parameter.limit, 10) || 6));
     var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
     var range = sheet.getDataRange();
-    // 畫面上看到的文字（Time 欄如 4:42）；getValues() 會變成 Date/數字導致排行榜空白
     var displayRows = range.getDisplayValues();
     var rawRows = range.getValues();
     var bestByKey = {};
@@ -69,19 +150,20 @@ function getLeaderboard(e) {
     for (var i = 1; i < displayRows.length; i++) {
       var row = displayRows[i];
       var raw = rawRows[i];
-      var classId = String(row[1] || '').trim();
-      var seatNumber = String(row[2] || '').trim();
-      var name = String(row[3] || '').trim();
-      var time = formatTimeCell(row[5], raw[5]);
-      if (!name || !time) continue;
+      var parsed = parseSheetScoreRow(row, raw);
+      if (!parsed) continue;
 
-      var elapsedSeconds = parseTimeToSeconds(time);
-      if (!isFinite(elapsedSeconds)) continue;
-
+      var classId = parsed.classId;
+      var seatNumber = parsed.seatNumber;
+      var name = parsed.name;
+      var baseScore = parsed.baseScore;
+      var time = parsed.time;
+      var elapsedSeconds = parsed.elapsedSeconds;
+      var leaderboardScore = parsed.leaderboardScore;
       var key = classId + '\t' + seatNumber + '\t' + name;
       var savedAt = '';
-      if (row[0] instanceof Date) {
-        savedAt = row[0].toISOString();
+      if (raw[0] instanceof Date) {
+        savedAt = raw[0].toISOString();
       } else if (row[0]) {
         savedAt = String(row[0]);
       }
@@ -90,12 +172,23 @@ function getLeaderboard(e) {
         classId: classId,
         seatNumber: seatNumber,
         name: name,
+        baseScore: baseScore,
+        leaderboardScore: leaderboardScore,
         elapsedTime: time,
         elapsedSeconds: elapsedSeconds,
         savedAt: savedAt,
       };
 
-      if (!bestByKey[key] || elapsedSeconds < bestByKey[key].elapsedSeconds) {
+      if (!bestByKey[key]) {
+        bestByKey[key] = entry;
+        continue;
+      }
+      var prev = bestByKey[key];
+      if (
+        leaderboardScore > prev.leaderboardScore ||
+        (leaderboardScore === prev.leaderboardScore &&
+          elapsedSeconds < prev.elapsedSeconds)
+      ) {
         bestByKey[key] = entry;
       }
     }
@@ -108,6 +201,9 @@ function getLeaderboard(e) {
     }
 
     list.sort(function (a, b) {
+      if (b.leaderboardScore !== a.leaderboardScore) {
+        return b.leaderboardScore - a.leaderboardScore;
+      }
       if (a.elapsedSeconds !== b.elapsedSeconds) {
         return a.elapsedSeconds - b.elapsedSeconds;
       }
