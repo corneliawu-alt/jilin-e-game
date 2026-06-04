@@ -31,7 +31,7 @@ import {
   type QuestQuestion,
   PREVENTION_ITEMS_BY_ID,
   createEmptyInventory,
-  hasFullBossKit,
+  getMissingFinalQuestItemLabels,
   type GamePhase,
   type TreasureSpot,
   type PlayerInventory,
@@ -41,7 +41,6 @@ import NpcDialog from './NpcDialog';
 import GameMap from './GameMap';
 import GameHeader from './GameHeader';
 import RatTauntDialog from './RatTauntDialog';
-import RatSprite from './RatSprite';
 import RpgDialogBox, { RpgContinueHint } from './RpgDialogBox';
 import {
   getPlayerPortraitPath,
@@ -70,15 +69,6 @@ import {
 } from '../constants/ratWander';
 import { resolvePlayerFacingTowardRat } from '../constants/ratAssets';
 import { HelpCircle, ShieldCheck } from 'lucide-react';
-import {
-  findNearestTreasure,
-  getUncollectedTreasures,
-  generateBossBlockedTaunt,
-  canUseRadarFree,
-  canUseRadarWithScore,
-  RADAR_SCORE_COST,
-  RADAR_PING_DURATION_MS,
-} from '../constants/treasureRadar';
 import {
   generateLearningRatTaunt,
   REQUIRED_LEARNING_NPCS,
@@ -133,8 +123,6 @@ export default function Game({
   const [activeQuestionId, setActiveQuestionId] = useState<number | null>(null);
   const [activeQuestion, setActiveQuestion] = useState<QuestQuestion | null>(null);
   const [baseScore, setBaseScore] = useState(0);
-  /** 付費使用寶物雷達時從防疫積分扣除的累計值 */
-  const [radarScorePenalty, setRadarScorePenalty] = useState(0);
   const [showBadgeBurst, setShowBadgeBurst] = useState(false);
   const [showQuiz, setShowQuiz] = useState(false);
   const [seekingNpc, setSeekingNpc] = useState<TargetNPC | null>(null);
@@ -162,11 +150,6 @@ export default function Game({
   const [showTreasureDialog, setShowTreasureDialog] = useState(false);
   const [showRatTauntDialog, setShowRatTauntDialog] = useState(false);
   const [ratTauntMessage, setRatTauntMessage] = useState('');
-  const [bossGateMode, setBossGateMode] = useState<'blocked' | 'ready' | null>(null);
-  const [bossBlockedMessage, setBossBlockedMessage] = useState('');
-  const [lastRadarUsedAt, setLastRadarUsedAt] = useState<number | null>(null);
-  const [radarTarget, setRadarTarget] = useState<{ x: number; y: number } | null>(null);
-  const [radarToast, setRadarToast] = useState<string | null>(null);
   const [interactionToast, setInteractionToast] = useState<string | null>(null);
   const interactionToastTimerRef = useRef(0);
   const [showCertificationModal, setShowCertificationModal] = useState(false);
@@ -217,7 +200,7 @@ export default function Game({
     !!activeNpc ||
     showTreasureDialog ||
     showRatTauntDialog ||
-    !!bossGateMode ||
+    !!questSystemDialog ||
     (showCertificationModal && !certModalDismissed) ||
     endgamePhase !== null;
   const movementBlocked = uiBlocked;
@@ -268,7 +251,7 @@ export default function Game({
     const timeBonus = calculateTimeBonus(frozenSeconds);
     const leaderboardScore = Math.max(
       0,
-      calculateLeaderboardScore(baseScore, frozenSeconds) - radarScorePenalty,
+      calculateLeaderboardScore(baseScore, frozenSeconds),
     );
     setEndgameStats({
       score: baseScore,
@@ -285,19 +268,14 @@ export default function Game({
     allQuestsDone,
     completedQuests,
     baseScore,
-    radarScorePenalty,
     totalAttempts,
     startTime,
     beginVictoryMusic,
   ]);
 
   const leaderboardScoreLive = useMemo(
-    () =>
-      Math.max(
-        0,
-        calculateLeaderboardScore(baseScore, elapsedSeconds) - radarScorePenalty,
-      ),
-    [baseScore, elapsedSeconds, radarScorePenalty],
+    () => Math.max(0, calculateLeaderboardScore(baseScore, elapsedSeconds)),
+    [baseScore, elapsedSeconds],
   );
 
   /** 任務答題框開關：僅 battle BGM；關閉後恢復小鎮 BGM（bomp 僅 NPC 解鎖時） */
@@ -388,7 +366,6 @@ export default function Game({
       showTreasureDialog ||
       showRatTauntDialog ||
       endgamePhase !== null ||
-      bossGateMode ||
       (showCertificationModal && !certModalDismissed)
     ) {
       return;
@@ -415,7 +392,6 @@ export default function Game({
     showTreasureDialog,
     showRatTauntDialog,
     endgamePhase,
-    bossGateMode,
     showCertificationModal,
     certModalDismissed,
   ]);
@@ -492,7 +468,6 @@ export default function Game({
     setShowQuiz(false);
     setActiveQuestion(null);
     setActiveQuestionId(null);
-    setBossGateMode(null);
     setRatTauntMessage(generateLearningRatTaunt(talkedToNPCs));
     setShowRatTauntDialog(true);
     playSfx('laugh');
@@ -602,20 +577,15 @@ export default function Game({
 
       ensureCombatReady();
 
-      const isBossQuest =
-        point.questionId === 10 && completedQuestIds.size >= 9;
-      if (isBossQuest) {
-        if (!hasFullBossKit(inventory)) {
-          setBossBlockedMessage(
-            generateBossBlockedTaunt(inventory, collectedTreasureIds),
-          );
-          setBossGateMode('blocked');
+      if (completedQuestIds.size === 9) {
+        const missing = getMissingFinalQuestItemLabels(inventory);
+        if (missing.length > 0) {
+          setQuestSystemDialog({
+            title: '裝備不足！',
+            text: `對抗最後的變異鼠王需要齊全的防疫裝備！你還缺少：${missing.join('、')}。請在地圖角落尋找寶箱！`,
+          });
           return;
         }
-        setActiveQuestion(question);
-        setActiveQuestionId(point.questionId);
-        setBossGateMode('ready');
-        return;
       }
 
       openQuestQuiz(question);
@@ -633,7 +603,6 @@ export default function Game({
       ensureCombatReady,
       completedQuestIds,
       inventory,
-      collectedTreasureIds,
       openQuestQuiz,
     ],
   );
@@ -725,7 +694,7 @@ export default function Game({
         return;
       }
 
-      if (uiBlocked && !showRatTauntDialog && !bossGateMode) {
+      if (uiBlocked && !showRatTauntDialog) {
         return;
       }
 
@@ -759,7 +728,6 @@ export default function Game({
       showCertificationModal,
       certModalDismissed,
       showRatTauntDialog,
-      bossGateMode,
       showQuestSystemMessage,
     ],
   );
@@ -775,37 +743,6 @@ export default function Game({
     });
     setShowTreasureDialog(false);
   }, []);
-
-  const dismissBossGateReady = useCallback(() => {
-    setBossGateMode(null);
-    setShowQuiz(true);
-  }, []);
-
-  const dismissBossGateBlocked = useCallback(() => {
-    setBossGateMode(null);
-    setBossBlockedMessage('');
-  }, []);
-
-  const activateTreasureRadar = useCallback(() => {
-    const now = Date.now();
-    if (!canUseRadarWithScore(leaderboardScoreLive, lastRadarUsedAt, now)) return;
-
-    const target = findNearestTreasure(playerPos, collectedTreasureIds);
-    if (!target) return;
-
-    const free = canUseRadarFree(lastRadarUsedAt, now);
-    if (!free) {
-      setRadarScorePenalty((p) => p + RADAR_SCORE_COST);
-    }
-    setLastRadarUsedAt(now);
-    setRadarTarget({ x: target.x, y: target.y });
-
-    const item = PREVENTION_ITEMS_BY_ID[target.itemId];
-    setRadarToast(`雷達鎖定：${item.emoji} ${item.name}（距離 ${Math.abs(target.x - playerPos.x) + Math.abs(target.y - playerPos.y)} 格）`);
-
-    window.setTimeout(() => setRadarTarget(null), RADAR_PING_DURATION_MS);
-    window.setTimeout(() => setRadarToast(null), RADAR_PING_DURATION_MS + 1500);
-  }, [leaderboardScoreLive, lastRadarUsedAt, playerPos, collectedTreasureIds]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -825,23 +762,15 @@ export default function Game({
         return;
       }
 
-      if (bossGateMode === 'ready') {
+      if (questSystemDialog) {
         if (e.key === ' ' || e.key === 'Enter') {
           e.preventDefault();
-          dismissBossGateReady();
+          setQuestSystemDialog(null);
         }
         return;
       }
 
-      if (bossGateMode === 'blocked') {
-        if (e.key === ' ' || e.key === 'Enter') {
-          e.preventDefault();
-          dismissBossGateBlocked();
-        }
-        return;
-      }
-
-      if (showRatTauntDialog || bossGateMode) return;
+      if (showRatTauntDialog) return;
 
       if (showQuiz || activeNpc) return;
 
@@ -908,9 +837,7 @@ export default function Game({
     dismissCertificationModal,
     dismissTreasureDialog,
     showRatTauntDialog,
-    bossGateMode,
-    dismissBossGateReady,
-    dismissBossGateBlocked,
+    questSystemDialog,
   ]);
 
   const triggerBadgeBurst = useCallback(() => {
@@ -1004,7 +931,6 @@ export default function Game({
   };
 
   const npcProgress = talkedToNPCs.size;
-  const uncollectedTreasureCount = getUncollectedTreasures(collectedTreasureIds).length;
   const contextHint =
     needsNpcLearning
       ? adjacentQuestPoint
@@ -1039,10 +965,6 @@ export default function Game({
         inventory={inventory}
         talkedToNPCs={talkedToNPCs}
         seekingNpc={seekingNpc}
-        uncollectedTreasureCount={uncollectedTreasureCount}
-        lastRadarUsedAt={lastRadarUsedAt}
-        onActivateRadar={activateTreasureRadar}
-        radarUiDisabled={uiBlocked}
       />
 
       <div className="relative flex-1 min-h-0 w-full">
@@ -1058,7 +980,6 @@ export default function Game({
           questRatsVisible={questRatsOnMap}
           ratsBurst={showRatBurst}
           collectedTreasureIds={collectedTreasureIds}
-          radarTarget={radarTarget}
           highlightQuestId={highlightQuestId}
           freezeEntityFacing={!!activeNpc || showQuiz}
           onQuestRatClick={handleRatClick}
@@ -1073,9 +994,9 @@ export default function Game({
               <div className="flex flex-col gap-0.5 text-[10px] text-white/90 px-1 drop-shadow sm:flex-row sm:items-center sm:gap-2">
                 <HelpCircle size={12} className="shrink-0 hidden sm:block" />
                 <span className="font-bold text-amber-100 shrink-0">{GAME_KEYBOARD_HINT}</span>
-                {(interactionToast ?? radarToast ?? contextHint) && (
+                {(interactionToast ?? contextHint) && (
                   <span className="text-white/85 leading-snug">
-                    — {interactionToast ?? radarToast ?? contextHint}
+                    — {interactionToast ?? contextHint}
                   </span>
                 )}
               </div>
@@ -1141,66 +1062,6 @@ export default function Game({
             message={ratTauntMessage}
             onClose={() => setShowRatTauntDialog(false)}
           />
-        )}
-      </AnimatePresence>
-
-      <AnimatePresence>
-        {bossGateMode === 'ready' && (
-          <RpgDialogBox
-            key="boss-ready"
-            speakerName="鼠王 Boss"
-            speakerBadge={
-              <span className="text-[10px] bg-red-600/50 text-red-100 px-2 py-0.5 rounded border border-red-400/70 font-bold">
-                終極防疫攻擊
-              </span>
-            }
-            portrait={
-              <div className="w-full h-full flex items-center justify-center scale-125">
-                <RatSprite
-                  variant="boss"
-                  direction="down"
-                  animateWalk={false}
-                  className="!animate-none drop-shadow-[0_0_12px_rgba(239,68,68,0.8)]"
-                />
-              </div>
-            }
-            onClick={dismissBossGateReady}
-            footer={<RpgContinueHint />}
-          >
-            <p className="text-red-100 text-sm sm:text-base leading-relaxed font-bold">
-              你裝備齊全，成功發動終極防疫攻擊！
-            </p>
-            <p className="mt-2 text-[10px] text-red-200/80">
-              黏鼠板、漂白水、防護口罩已就緒 — 準備迎戰鼠王！
-            </p>
-          </RpgDialogBox>
-        )}
-        {bossGateMode === 'blocked' && (
-          <RpgDialogBox
-            key="boss-blocked"
-            speakerName="鼠王 Boss"
-            speakerBadge={
-              <span className="text-[10px] bg-stone-600/50 text-stone-200 px-2 py-0.5 rounded border border-stone-400/70 font-bold">
-                無法挑戰
-              </span>
-            }
-            portrait={
-              <div className="w-full h-full flex items-center justify-center scale-125">
-                <RatSprite
-                  variant="boss"
-                  direction="down"
-                  animateWalk={false}
-                  className="!animate-none opacity-80"
-                />
-              </div>
-            }
-            onClick={dismissBossGateBlocked}
-            footer={<RpgContinueHint />}
-          >
-            <p className="text-rose-100 text-sm sm:text-base leading-relaxed font-medium italic">
-              {bossBlockedMessage}
-            </p>
-          </RpgDialogBox>
         )}
       </AnimatePresence>
 

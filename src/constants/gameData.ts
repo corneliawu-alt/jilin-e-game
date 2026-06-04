@@ -157,6 +157,8 @@ export {
   TREASURE_ITEM,
   createEmptyInventory,
   hasFullBossKit,
+  getMissingFinalQuestItemLabels,
+  buildFinalQuestBlockedMessage,
   pickTreasureItemId,
   type ItemId,
   type PreventionItem,

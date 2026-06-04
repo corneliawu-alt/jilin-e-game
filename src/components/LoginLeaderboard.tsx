@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { motion } from 'motion/react';
-import { Crown, Loader2, Trophy } from 'lucide-react';
+import { Clock, Crown, Loader2, Trophy } from 'lucide-react';
 import { fetchTopSpeedrunFromGoogle } from '../lib/fetchGoogleLeaderboard';
 import type { LeaderboardEntry } from '../lib/leaderboard';
 import { isGoogleFormConfigured } from '../lib/submitGoogleForm';
@@ -98,7 +98,7 @@ export default function LoginLeaderboard() {
             </p>
           </div>
         ) : (
-          <ul className="space-y-1.5">
+          <ul className="space-y-2">
             {entries.map((entry, index) => {
               const isPodium = entry.rank <= 3;
               const medal = MEDALS[entry.rank - 1];
@@ -110,7 +110,8 @@ export default function LoginLeaderboard() {
                   initial={{ opacity: 0, x: -10 }}
                   animate={{ opacity: 1, x: 0 }}
                   transition={{ delay: index * 0.05 }}
-                  className={`flex items-center gap-2.5 rounded-lg px-3 py-2.5 sm:py-3 border
+                  className={`login-leaderboard-row flex items-center gap-3 sm:gap-3.5
+                    rounded-lg px-3.5 sm:px-4 py-2.5 sm:py-3 border
                     bg-linear-to-r backdrop-blur-sm
                     ${
                       isPodium
@@ -132,7 +133,7 @@ export default function LoginLeaderboard() {
                   >
                     <span>{entry.name}</span>
                     <span
-                      className={`font-semibold mx-1.5 sm:mx-2
+                      className={`font-semibold mx-1 sm:mx-1.5
                         ${isPodium ? 'text-amber-200/75' : 'text-amber-200/55'}`}
                       aria-hidden
                     >
@@ -142,17 +143,22 @@ export default function LoginLeaderboard() {
                       {entry.classId} 班 {entry.seatNumber} 號
                     </span>
                   </p>
-                  <div
-                    className={`shrink-0 flex flex-col items-end text-amber-300 font-black
-                      tabular-nums leading-tight
-                      ${isPodium ? 'text-base sm:text-lg' : 'text-sm sm:text-base'}`}
-                  >
-                    <span className="flex items-center gap-1">
-                      <Trophy size={14} className="opacity-60" aria-hidden />
-                      {entry.leaderboardScore}
-                    </span>
-                    <span className="text-[10px] font-semibold text-amber-200/55">
+                  <div className="login-leaderboard-stats shrink-0">
+                    <span
+                      className={`login-leaderboard-stat login-leaderboard-stat--time
+                        ${isPodium ? 'login-leaderboard-stat--podium' : ''}`}
+                      title="通關時間"
+                    >
+                      <Clock size={isPodium ? 13 : 12} aria-hidden />
                       {entry.elapsedTime}
+                    </span>
+                    <span
+                      className={`login-leaderboard-stat login-leaderboard-stat--score
+                        ${isPodium ? 'login-leaderboard-stat--podium' : ''}`}
+                      title="防疫積分"
+                    >
+                      <Trophy size={isPodium ? 16 : 14} aria-hidden />
+                      {entry.leaderboardScore}
                     </span>
                   </div>
                 </motion.li>

@@ -46,6 +46,20 @@ export function hasFullBossKit(inventory: PlayerInventory): boolean {
   return PREVENTION_ITEMS.every((item) => inventory[item.id] >= 1);
 }
 
+/** 第 10 隻任務鼠（最後一隻）缺少的防疫道具顯示名稱 */
+export function getMissingFinalQuestItemLabels(inventory: PlayerInventory): string[] {
+  const missing: string[] = [];
+  if (inventory.mouse_trap < 1) missing.push('【黏鼠板】');
+  if (inventory.bleach < 1) missing.push('【漂白水】');
+  if (inventory.mask < 1) missing.push('【口罩】');
+  return missing;
+}
+
+export function buildFinalQuestBlockedMessage(inventory: PlayerInventory): string {
+  const missing = getMissingFinalQuestItemLabels(inventory);
+  return `對抗最後的變異鼠王需要齊全的防疫裝備！你還缺少：${missing.join('、')}。請在地圖角落尋找寶箱！`;
+}
+
 export function pickTreasureItemId(x: number, y: number, seed = 0): ItemId {
   const h = Math.abs((x * 928371 + y * 689287 + seed * 982451) % 2147483647);
   const pool: ItemId[] = ['mouse_trap', 'bleach', 'mask'];

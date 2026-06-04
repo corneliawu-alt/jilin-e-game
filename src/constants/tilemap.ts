@@ -2744,7 +2744,95 @@ function generateTreasures(
     }
   }
 
-  return spots;
+  return ensureGuaranteedTreasureSpawns(map, meta, questPoints, reserved, spots);
+}
+
+/** 保證地圖上至少各有 2 個黏鼠板／漂白水／口罩寶箱（可達且不被樹木封死） */
+function ensureGuaranteedTreasureSpawns(
+  map: TileId[][],
+  meta: (BuildingCellMeta | null)[][],
+  questPoints: QuestPoint[],
+  reserved: Set<string>,
+  spots: TreasureSpot[],
+): TreasureSpot[] {
+  const staticBlocked = buildTreasureStaticBlocked(questPoints, reserved);
+  const result = [...spots];
+  const used = new Set(result.map((s) => `${s.x},${s.y}`));
+  const deficit: Record<ItemId, number> = { mouse_trap: 2, bleach: 2, mask: 2 };
+
+  for (const spot of result) {
+    deficit[spot.itemId] = Math.max(0, deficit[spot.itemId] - 1);
+  }
+
+  const itemsToPlace: ItemId[] = (['mouse_trap', 'bleach', 'mask'] as const).flatMap((id) =>
+    Array.from({ length: deficit[id] }, () => id),
+  );
+  if (itemsToPlace.length === 0) return result;
+
+  const buildCandidates = (minWalkableNeighbors: number, minSeparation: number) => {
+    const list: { x: number; y: number; score: number }[] = [];
+    for (let y = 1; y < GRID_HEIGHT - 1; y++) {
+      for (let x = 1; x < GRID_WIDTH - 1; x++) {
+        const key = `${x},${y}`;
+        if (used.has(key)) continue;
+        if (!isValidTreasureLocation(map, meta, x, y, staticBlocked)) continue;
+        if (!isReachableFromPlayer(map, meta, x, y, staticBlocked)) continue;
+        if (countWalkableNeighbors(map, meta, x, y, staticBlocked) < minWalkableNeighbors) {
+          continue;
+        }
+        list.push({ x, y, score: scoreTreasureCandidate(map, meta, x, y) });
+      }
+    }
+    list.sort((a, b) => b.score - a.score || hash(a.x, a.y, 93) - hash(b.x, b.y, 93));
+    return { list, minSeparation };
+  };
+
+  const tryPlaceGuaranteed = (
+    itemId: ItemId,
+    candidates: { x: number; y: number; score: number }[],
+    minSeparation: number,
+  ): boolean => {
+    for (const c of candidates) {
+      const key = `${c.x},${c.y}`;
+      if (used.has(key)) continue;
+      const tooClose = result.some(
+        (s) => Math.abs(s.x - c.x) + Math.abs(s.y - c.y) < minSeparation,
+      );
+      if (tooClose) continue;
+      if (!isReachableFromPlayer(map, meta, c.x, c.y, staticBlocked)) continue;
+
+      used.add(key);
+      const item = PREVENTION_ITEMS_BY_ID[itemId];
+      result.push({
+        id: `treasure-guaranteed-${result.length + 1}`,
+        x: c.x,
+        y: c.y,
+        variant: hash(c.x, c.y, 94) % 2 === 0 ? 'chest' : 'sparkle',
+        itemId,
+        label: item.name,
+      });
+      return true;
+    }
+    return false;
+  };
+
+  let remaining = [...itemsToPlace];
+  for (const pass of [
+    { minWalkable: 2, minSeparation: 3 },
+    { minWalkable: 1, minSeparation: 2 },
+    { minWalkable: 1, minSeparation: 1 },
+  ]) {
+    const { list } = buildCandidates(pass.minWalkable, pass.minSeparation);
+    const next: ItemId[] = [];
+    for (const itemId of remaining) {
+      if (tryPlaceGuaranteed(itemId, list, pass.minSeparation)) continue;
+      next.push(itemId);
+    }
+    remaining = next;
+    if (remaining.length === 0) break;
+  }
+
+  return result;
 }
 
 export function generateMap(): TileId[][] {

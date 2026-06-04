@@ -16,7 +16,6 @@ import {
 } from '../constants/gameData';
 import { getRatDefaultFacing } from '../constants/ratAssets';
 import { renderTile } from './map/renderTile';
-import TreasureRadarPing from './map/TreasureRadarPing';
 import MapDecorationLayer from './map/MapDecorationLayer';
 import { EntityGroundShadow } from './map/mapDecorations';
 import RatSprite from './RatSprite';
@@ -53,7 +52,6 @@ interface GameMapProps {
   questRatsVisible: boolean;
   ratsBurst: boolean;
   collectedTreasureIds: ReadonlySet<string>;
-  radarTarget: { x: number; y: number } | null;
   /** 互動範圍內高亮任務鼠並顯示 Enter/Z 抓鼠提示 */
   highlightQuestId: number | null;
   /** 對話／答題中鎖定面向與行走動畫 */
@@ -91,7 +89,6 @@ export default function GameMap({
   questRatsVisible,
   ratsBurst,
   collectedTreasureIds,
-  radarTarget,
   highlightQuestId,
   freezeEntityFacing,
   onQuestRatClick,
@@ -267,8 +264,6 @@ export default function GameMap({
             </div>
           ))}
 
-          {radarTarget && <TreasureRadarPing x={radarTarget.x} y={radarTarget.y} />}
-
           <AnimatePresence>
             {visibleQuestRats.map((rat, index) => {
               const questPoint = normalizeQuestPoint({
@@ -276,7 +271,7 @@ export default function GameMap({
                 x: rat.x,
                 y: rat.y,
               });
-              const isBoss = rat.questId === 10 && completedQuestIds.size >= 9;
+              const isBoss = completedQuestIds.size >= 9;
               const inRange = isWithinRatInteractionRange(playerPos, rat);
               const frozen = isRatWanderFrozenForPlayer(rat, playerPos);
               const isAdjacent = highlightQuestId === rat.questId;

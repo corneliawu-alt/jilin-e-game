@@ -816,6 +816,80 @@
   border-color: rgb(217 119 6 / 0.35);
 }
 
+.login-leaderboard-stats {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  margin-left: 0.125rem;
+  padding-left: 0.75rem;
+  border-left: 1px solid rgb(180 83 9 / 0.28);
+  font-variant-numeric: tabular-nums;
+}
+
+@media (min-width: 640px) {
+  .login-leaderboard-stats {
+    gap: 0.875rem;
+    padding-left: 0.875rem;
+  }
+}
+
+.login-leaderboard-stat {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  white-space: nowrap;
+  line-height: 1.2;
+}
+
+.login-leaderboard-stat svg {
+  flex-shrink: 0;
+  opacity: 0.55;
+}
+
+.login-leaderboard-stat--time {
+  min-width: 2.85rem;
+  justify-content: flex-end;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: rgb(253 230 138 / 0.72);
+}
+
+.login-leaderboard-stat--score {
+  min-width: 3.35rem;
+  justify-content: flex-end;
+  font-size: 0.9375rem;
+  font-weight: 900;
+  color: rgb(252 211 77);
+  letter-spacing: 0.01em;
+}
+
+.login-leaderboard-stat--score svg {
+  opacity: 0.6;
+}
+
+.login-leaderboard-stat--podium.login-leaderboard-stat--time {
+  min-width: 3rem;
+  font-size: 0.8125rem;
+  color: rgb(253 230 138 / 0.82);
+}
+
+.login-leaderboard-stat--podium.login-leaderboard-stat--score {
+  min-width: 3.65rem;
+  font-size: 1.125rem;
+}
+
+@media (min-width: 640px) {
+  .login-leaderboard-stat--score {
+    font-size: 1rem;
+    min-width: 3.5rem;
+  }
+
+  .login-leaderboard-stat--podium.login-leaderboard-stat--score {
+    font-size: 1.25rem;
+    min-width: 3.85rem;
+  }
+}
+
 /* 深色 RPG 輸入框 */
 .login-rpg-input {
   background: rgb(2 6 23 / 0.75);

@@ -4,7 +4,6 @@ import { GAME_TITLE, type GamePhase } from '../constants/gameData';
 import QuestProgressBar from './QuestProgressBar';
 import NpcZonePanel from './NpcZonePanel';
 import ItemBackpack from './ItemBackpack';
-import TreasureRadarButton from './TreasureRadarButton';
 import BgmToggleButton from './BgmToggleButton';
 import { NPCS, type TargetNPC } from '../constants/gameData';
 import type { PlayerInventory } from '../constants/items';
@@ -24,10 +23,6 @@ interface GameHeaderProps {
   inventory: PlayerInventory;
   talkedToNPCs: ReadonlySet<TargetNPC>;
   seekingNpc: TargetNPC | null;
-  uncollectedTreasureCount: number;
-  lastRadarUsedAt: number | null;
-  onActivateRadar: () => void;
-  radarUiDisabled?: boolean;
 }
 
 function StatChip({
@@ -66,10 +61,6 @@ export default function GameHeader({
   inventory,
   talkedToNPCs,
   seekingNpc,
-  uncollectedTreasureCount,
-  lastRadarUsedAt,
-  onActivateRadar,
-  radarUiDisabled = false,
 }: GameHeaderProps) {
   return (
     <header className="shrink-0 z-10 px-2 pt-1.5 pb-1.5">
@@ -148,13 +139,6 @@ export default function GameHeader({
               </div>
             </div>
             <div className="flex items-center gap-1 flex-wrap justify-end">
-              <TreasureRadarButton
-                leaderboardScore={leaderboardScore}
-                lastRadarUsedAt={lastRadarUsedAt}
-                uncollectedCount={uncollectedTreasureCount}
-                disabled={radarUiDisabled}
-                onActivate={onActivateRadar}
-              />
               <ItemBackpack inventory={inventory} compact />
             </div>
           </div>
